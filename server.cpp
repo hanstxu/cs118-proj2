@@ -1,6 +1,8 @@
 #include <string.h>
 #include <thread>
 #include <iostream>
+#include <sstream>
+#include <fstream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -25,6 +27,43 @@ void *get_in_addr(struct sockaddr *sa)
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
+void save_file(int* num_connections, string path, int sockfd) {
+    socklen_t addr_len;
+    struct sockaddr_storage their_addr;
+    int numbytes;
+    char s[INET6_ADDRSTRLEN];
+    char buf[1500] = {0};
+    memset(buf, '\0', sizeof(buf));
+
+
+    //Receive bytes
+    addr_len = sizeof(their_addr);
+    if ((numbytes = recvfrom(sockfd, buf, 1500-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
+        cerr << "ERROR: recvfrom";
+        exit(5);
+    }
+
+    printf("listener: got packet from %s\n", inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s));
+    printf("listener: packet is %d bytes long\n", numbytes);
+    buf[numbytes] = '\0';
+    printf("listener: packet contains \"%s\"\n", buf);
+
+    if(numbytes > 0) {
+        (*num_connections)++;
+        ofstream o_file;
+        string folder = path;
+        // string filepath = folder + '/' + to_string(num_connections) + ".file";
+        string filepath = "./" + to_string(*num_connections) + ".file";
+        cout << "filepath: " << filepath << endl;
+        o_file.open(filepath, ios::out | ios::binary);
+        cerr << "buf: " << buf << endl;
+        o_file.write(buf, numbytes);
+        memset(buf, '\0', sizeof(buf));
+
+        o_file.close();
+    }
+}
+
 int main(int argc, char *argv[])
 {
     //Declare all variables
@@ -32,11 +71,7 @@ int main(int argc, char *argv[])
     int sockfd;
     struct addrinfo hints, *servinfo, *p;
     int rv;
-    int numbytes;
-    struct sockaddr_storage their_addr;
-    char buf[MAXBUFLEN];
-    socklen_t addr_len;
-    char s[INET6_ADDRSTRLEN];
+    int num_connections = 0;
 
     //Handle basic command line argument inputs
     //server <PORT> <FILE-DIR>
@@ -61,7 +96,7 @@ int main(int argc, char *argv[])
     hints.ai_flags = AI_PASSIVE;        //use my IP
 
     //Get addr info
-    if ((rv = getaddrinfo(NULL, MYPORT, &hints, &servinfo)) != 0) {
+    if ((rv = getaddrinfo(NULL, argv[1], &hints, &servinfo)) != 0) {
         cerr << "ERROR: getaddrinfo: " << gai_strerror(rv) << endl;
         exit(3);
     }
@@ -91,19 +126,20 @@ int main(int argc, char *argv[])
     freeaddrinfo(servinfo);
 
     cerr << "server: waiting to recvfrom...\n" ;
+    
+    // addr_len = sizeof(their_addr);
+    // if ((numbytes = recvfrom(sockfd, buf, MAXBUFLEN-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
+    //     cerr << "ERROR: recvfrom";
+    //     exit(5);
+    // }
 
-    //
-    addr_len = sizeof(their_addr);
-    if ((numbytes = recvfrom(sockfd, buf, MAXBUFLEN-1 , 0,
-        (struct sockaddr *)&their_addr, &addr_len)) == -1) {
-        cerr << "ERROR: recvfrom";
-        exit(5);
+    // printf("listener: got packet from %s\n", inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s));
+    // printf("listener: packet is %d bytes long\n", numbytes);
+    // buf[numbytes] = '\0';
+    // printf("listener: packet contains \"%s\"\n", buf);
+    while(1) {
+        save_file(&num_connections, argv[2], sockfd);
     }
-
-    printf("listener: got packet from %s\n", inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s));
-    printf("listener: packet is %d bytes long\n", numbytes);
-    buf[numbytes] = '\0';
-    printf("listener: packet contains \"%s\"\n", buf);
 
     close(sockfd);
 }
