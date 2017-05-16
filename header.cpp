@@ -1,6 +1,6 @@
 #include "header.h"
 
-void convert_to_buffer(unsigned char* buffer, unsigned int syn, unsigned int ack,
+void convert_to_buffer(char* buffer, unsigned int syn, unsigned int ack,
 	unsigned short cid, unsigned short flags) {
 	int i = 0;
 	for (; i < 4; i++)
@@ -13,7 +13,7 @@ void convert_to_buffer(unsigned char* buffer, unsigned int syn, unsigned int ack
 		buffer[i] = (flags >> (8 - 8*(i - 10))) & 0xFF;
 }
 
-void get_header_info(unsigned char* buffer, unsigned int& syn,
+void get_header_info(char* buffer, unsigned int& syn,
 	unsigned int& ack, unsigned short& cid, unsigned short& flags) {
 	syn = 0, ack = 0, cid = 0, flags = 0;
 	int i = 0;
