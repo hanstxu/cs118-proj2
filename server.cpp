@@ -53,24 +53,28 @@ void handle_packet(int* num_connections, string path, int sockfd, int* sequence_
     unsigned int syn, ack;
     unsigned short cid, flags;
 
-    //Receive initial packet, part 1 of handshake
+
+    //RECEIVE PACKET
     addr_len = sizeof(their_addr);
     if ((numbytes = recvfrom(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
         cerr << "ERROR: recvfrom";
         exit(5);
     }
 
-    //Receive packet and extract the header here... currently hardcoded.
-    convert_to_buffer(header, 12345, 0, 12, 2);         //the hardcoded header
+
+    //Extract header from packet.
+    convert_to_buffer(header, 12345, 0, 12, 2);         //Currently hardcoded header...
     get_header_info(header, syn, ack, cid, flags);
 
-    //if only syn flag...
+
+    //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE
     if(flags == S_FLAG && (*num_connections == 0)) {
         memset(&header, 0, sizeof(header));
         (*num_connections)++;
 
-        //default values          syn                             ack    cid               flags    
-        convert_to_buffer(header, SERVER_INITIAL_SEQUENCE_NUMBER, syn+1, *num_connections, A_FLAG | S_FLAG );
+        unsigned int handshake_ack = syn+1;
+        //default values          syn                             ack            cid               flags    
+        convert_to_buffer(header, SERVER_INITIAL_SEQUENCE_NUMBER, handshake_ack, *num_connections, A_FLAG | S_FLAG );
         
         //send part 2 of handshake
         sendto(sockfd, header, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
@@ -78,7 +82,30 @@ void handle_packet(int* num_connections, string path, int sockfd, int* sequence_
         return;
     }
 
-    cout << "hello" << endl;
+    //CASE: FIN FLAG ONLY, PART 1 OF TERMINATE
+    if(flags == F_FLAG) {
+        //SEND ACK AFTER RECEIVING FIN
+        memset(&header, 0, sizeof(header));
+        unsigned int fin_sequence_number = 4322;
+        unsigned int fin_ack_number = syn+1;
+        convert_to_buffer(header, fin_sequence_number, fin_ack_number, cid, A_FLAG);
+        sendto(sockfd, header, BUFFER_SIZE-1, 0, (struct sockaddr *)&their_addr, addr_len);
+
+        //SEND FIN AND EXPECT ACK IN RETURN
+        memset(&header, 0, sizeof(header));
+        fin_sequence_number = 4322;
+        fin_ack_number = 0;
+        convert_to_buffer(header, fin_sequence_number, fin_ack_number, cid, F_FLAG);
+        sendto(sockfd, header, BUFFER_SIZE-1, 0, (struct sockaddr *)&their_addr, addr_len);
+        
+        //EXPECTING ACK IN RETURN...
+        if ((numbytes = recvfrom(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
+            cerr << "ERROR: recvfrom";
+            exit(5);
+        }
+
+    }
+
 
     //write to file
     if(numbytes > 0) {
@@ -159,6 +186,8 @@ int main(int argc, char *argv[])
     //At this point, handle the packet recieved
     while(1) {
         //hang at recvfrom() so the while loop is okay here..?
+
+
         handle_packet(&num_connections, argv[2], sockfd, &sequence_number);
 
         //threads... it hangs on the rcvfrom so can create a thread after the first rcvfrom?
