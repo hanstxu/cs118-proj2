@@ -8,10 +8,21 @@
 
 #include <string.h>		// for memset
 #include <unistd.h>		// POSIX operating system API
+#include <stdio.h>	// for printf
+
+#include "header.h"		// header formatting functions
 using namespace std;
 
-// maybe change
-#define BUFFER_SIZE 512
+#define PAYLOAD_SIZE 512
+#define PACKET_SIZE 524
+
+void initiate_handshake(char* buffer, char* src_ip, char* src_port,
+	char* dst_ip, char* dst_port) {
+	memcpy(buffer, "src-ip=", 7);
+	memcpy(&buffer[7], ", src-port=", 11);
+	memcpy(&buffer[18], ", dst-ip=", 9);
+	memcpy(&buffer[27], ", dst-port=", 11);
+}
 
 int main(int argc, char* argv[]) {
 	if (argc != 4) {
@@ -33,10 +44,6 @@ int main(int argc, char* argv[]) {
 		cerr << "ERROR: You must choose a port number between 1024 and 65535.\n";
 		exit(EXIT_FAILURE);
 	}
-	
-	cout << "IP Address: " << argv[1] << endl;
-	cout << "Port Number: " << port_num << endl;
-	cout << "File name: " << argv[3] << endl;
 	
 	int status;
 	struct addrinfo hints;
@@ -61,12 +68,25 @@ int main(int argc, char* argv[]) {
 		exit(EXIT_FAILURE);
 	}
 	
-	// connect
-	status = connect(sockfd, servinfo->ai_addr, servinfo->ai_addrlen);
+	char header[HEADER_SIZE];
+	convert_to_buffer(header, 12345, 0, 0, S_FLAG);
 	
-	int num_bytes = 11;
+	char payload[38];
+	initiate_handshake(payload, argv[1], argv[2], argv[1], argv[2]);
 	
-	send(sockfd, "hello world", num_bytes, 0);
+	struct addrinfo host;
+	struct addrinfo *hostinfo;  // will point to the results
+
+	memset(&host, 0, sizeof host); // make sure the struct is empty
+	host.ai_family = AF_INET;     // do
+	host.ai_socktype = SOCK_STREAM; // TCP stream sockets
+	host.ai_flags = SOCK_DGRAM;     // fill in my IP for me
+	
+	char packet[PACKET_SIZE];
+	memcpy(&packet, &header, HEADER_SIZE);
+	memcpy(&packet[HEADER_SIZE], &payload, 38);
+	
+	//sendto(sockfd, packet, HEADER_SIZE + 38, 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
 	close(sockfd);
 	freeaddrinfo(servinfo);
