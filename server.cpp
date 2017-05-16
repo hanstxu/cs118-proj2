@@ -12,8 +12,14 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <thread>         // std::thread
+#include <vector>
+
+#include "header.h"
+
 
 #define MAXBUFLEN 100
+#define BUFFER_SIZE 524
 #define MYPORT "4950"    // the port users will be connecting to
 
 using namespace std;
@@ -27,42 +33,90 @@ void *get_in_addr(struct sockaddr *sa)
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-void save_file(int* num_connections, string path, int sockfd) {
+void write_to_file (int num_connections, string filepath, char* buf, int numbytes){
+    ofstream o_file;
+    o_file.open(filepath, ios::out | ios::binary);
+    o_file.write(buf, numbytes);
+    cout << "filepath: " << filepath << endl << "buf: " << buf << endl;
+    memset(buf, '\0', BUFFER_SIZE);
+    o_file.close();
+}
+
+
+void handle_packet(int* num_connections, string path, int sockfd, int* sequence_number) {
     socklen_t addr_len;
     struct sockaddr_storage their_addr;
     int numbytes;
     char s[INET6_ADDRSTRLEN];
-    char buf[1500] = {0};
+    char buf[BUFFER_SIZE] = {0};
     memset(buf, '\0', sizeof(buf));
-
 
     //Receive bytes
     addr_len = sizeof(their_addr);
-    if ((numbytes = recvfrom(sockfd, buf, 1500-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
+    if ((numbytes = recvfrom(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
         cerr << "ERROR: recvfrom";
         exit(5);
     }
 
-    printf("listener: got packet from %s\n", inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s));
-    printf("listener: packet is %d bytes long\n", numbytes);
-    buf[numbytes] = '\0';
-    printf("listener: packet contains \"%s\"\n", buf);
+    
+    //Print useful debug info
+    // printf("listener: got packet from %s\n", inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s));
+    // printf("listener: packet is %d bytes long\n", numbytes);
+    // buf[numbytes] = '\0';
+    // printf("listener: packet contains \"%s\"\n", buf);
 
+    unsigned char header[HEADER_SIZE];
+    //buffer, syn/seq number, ack number, cid, flags
+    convert_to_buffer(header, 12345, 0  , 12, 2);
+
+    //print out hex
+    // cout << "Hex: ";
+    // for (int z = 0; z < 12; z++)
+    //     printf("%x ", (unsigned char)header[z]);
+    // cout << endl;
+
+    unsigned int syn;
+    unsigned int ack;
+    unsigned short cid;
+    unsigned short flags;
+    get_header_info(header, syn, ack, cid, flags);
+
+    // printf("Header values: %d %d %d %d\n", syn, ack, cid, flags);
+
+    //if only syn flag...
+    if(flags == 2) {
+        cout << "header size: " << sizeof(header) << endl;
+        memset(&header, 0, sizeof(header));
+
+        //hard coded values for now
+        convert_to_buffer(header, 4321, syn+1, 1, A_FLAG | S_FLAG );
+        get_header_info(header, syn, ack, cid, flags);
+
+        printf("Header values: %d %d %d %d\n", syn, ack, cid, flags);
+
+        //send part 2 of handshake
+        sendto(sockfd, header, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
+        numbytes = recvfrom(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, &addr_len);
+        buf[numbytes] = '\0';
+        cout << "second buf: " << buf;
+        // printf("listener: packet contains \"%s\"\n", buf);
+    }
+
+    //one connection id per client
+
+    //
+
+
+    //write to file
     if(numbytes > 0) {
         (*num_connections)++;
-        ofstream o_file;
         string folder = path;
-        // string filepath = folder + '/' + to_string(num_connections) + ".file";
         string filepath = "./" + to_string(*num_connections) + ".file";
-        cout << "filepath: " << filepath << endl;
-        o_file.open(filepath, ios::out | ios::binary);
-        cerr << "buf: " << buf << endl;
-        o_file.write(buf, numbytes);
-        memset(buf, '\0', sizeof(buf));
-
-        o_file.close();
+        // write_to_file(*num_connections, filepath, buf, numbytes);
     }
 }
+
+
 
 int main(int argc, char *argv[])
 {
@@ -72,6 +126,9 @@ int main(int argc, char *argv[])
     struct addrinfo hints, *servinfo, *p;
     int rv;
     int num_connections = 0;
+    int sequence_number = 4321;
+
+    vector<thread> threads;
 
     //Handle basic command line argument inputs
     //server <PORT> <FILE-DIR>
@@ -126,20 +183,19 @@ int main(int argc, char *argv[])
     freeaddrinfo(servinfo);
 
     cerr << "server: waiting to recvfrom...\n" ;
-    
-    // addr_len = sizeof(their_addr);
-    // if ((numbytes = recvfrom(sockfd, buf, MAXBUFLEN-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
-    //     cerr << "ERROR: recvfrom";
-    //     exit(5);
-    // }
 
-    // printf("listener: got packet from %s\n", inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s));
-    // printf("listener: packet is %d bytes long\n", numbytes);
-    // buf[numbytes] = '\0';
-    // printf("listener: packet contains \"%s\"\n", buf);
+    //At this point, handle the packet recieved
     while(1) {
-        save_file(&num_connections, argv[2], sockfd);
+        handle_packet(&num_connections, argv[2], sockfd, &sequence_number);
+
+        //threads... it hangs on the rcvfrom so can create a thread after the first rcvfrom?
+
+        // threads.push_back(thread(handle_packet, &num_connections, argv[2], sockfd, &sequence_number));
     }
+
+    // for(size_t i = 0; i < threads.size(); i++) {
+    //     threads[i].join();
+    // }
 
     close(sockfd);
 }
