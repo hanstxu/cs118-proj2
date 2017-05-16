@@ -21,6 +21,7 @@
 #define MAXBUFLEN 100
 #define MYPORT "4950"    // the port users will be connecting to
 #define SERVER_INITIAL_SEQUENCE_NUMBER 4321
+#define BUFFER_SIZE 512
 
 using namespace std;
 
@@ -35,28 +36,24 @@ void *get_in_addr(struct sockaddr *sa)
 
 void write_to_file (int num_connections, string filepath, char* buf, int numbytes){
     ofstream o_file;
-    o_file.open(filepath, ios::out | ios::binary);
+    o_file.open(filepath, ios::app | ios::out | ios::binary);
     o_file.write(buf, numbytes);
     cout << "filepath: " << filepath << endl << "buf: " << buf << endl;
     memset(buf, '\0', BUFFER_SIZE);
     o_file.close();
 }
 
-void initialize_connection() {
-
-}
-
 void handle_packet(int* num_connections, string path, int sockfd, int* sequence_number) {
     socklen_t addr_len;
     struct sockaddr_storage their_addr;
     int numbytes;
-    char s[INET6_ADDRSTRLEN];
+    // char s[INET6_ADDRSTRLEN];
     char buf[BUFFER_SIZE] = {0};
-    unsigned char header[HEADER_SIZE] = {0};
+    char header[HEADER_SIZE] = {0};
     unsigned int syn, ack;
     unsigned short cid, flags;
 
-    //Receive initial packet
+    //Receive initial packet, part 1 of handshake
     addr_len = sizeof(their_addr);
     if ((numbytes = recvfrom(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
         cerr << "ERROR: recvfrom";
@@ -64,39 +61,31 @@ void handle_packet(int* num_connections, string path, int sockfd, int* sequence_
     }
 
     //Receive packet and extract the header here... currently hardcoded.
-    convert_to_buffer(header, 12345, 0, 12, 2);
+    convert_to_buffer(header, 12345, 0, 12, 2);         //the hardcoded header
     get_header_info(header, syn, ack, cid, flags);
 
     //if only syn flag...
-    if(flags == 2) {
+    if(flags == S_FLAG && (*num_connections == 0)) {
         memset(&header, 0, sizeof(header));
-
-        //hard coded values for now
-        //converts these values into the header
         (*num_connections)++;
-        convert_to_buffer(header, SERVER_INITIAL_SEQUENCE_NUMBER, syn+1, *num_connections, A_FLAG | S_FLAG );
-        //uses header ptr/array and stores values into these variables appropriately
-        get_header_info(header, syn, ack, cid, flags);
-        printf("Header values: %d %d %d %d\n", syn, ack, cid, flags);
 
+        //default values          syn                             ack    cid               flags    
+        convert_to_buffer(header, SERVER_INITIAL_SEQUENCE_NUMBER, syn+1, *num_connections, A_FLAG | S_FLAG );
+        
         //send part 2 of handshake
         sendto(sockfd, header, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
-        
-        numbytes = recvfrom(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, &addr_len);
-        buf[numbytes] = '\0';
-        cout << "second buf: " << buf;
-        // printf("listener: packet contains \"%s\"\n", buf);
+
+        return;
     }
 
+    cout << "hello" << endl;
 
-
-    // //write to file
-    // if(numbytes > 0) {
-    //     (*num_connections)++;
-    //     string folder = path;
-    //     string filepath = "./" + to_string(*num_connections) + ".file";
-    //     // write_to_file(*num_connections, filepath, buf, numbytes);
-    // }
+    //write to file
+    if(numbytes > 0) {
+        string folder = path;
+        string filepath = "./" + to_string(*num_connections) + ".file";
+        write_to_file(*num_connections, filepath, buf, numbytes);
+    }
 }
 
 
