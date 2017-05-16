@@ -19,8 +19,8 @@
 
 
 #define MAXBUFLEN 100
-#define BUFFER_SIZE 524
 #define MYPORT "4950"    // the port users will be connecting to
+#define SERVER_INITIAL_SEQUENCE_NUMBER 4321
 
 using namespace std;
 
@@ -42,6 +42,9 @@ void write_to_file (int num_connections, string filepath, char* buf, int numbyte
     o_file.close();
 }
 
+void initialize_connection() {
+
+}
 
 void handle_packet(int* num_connections, string path, int sockfd, int* sequence_number) {
     socklen_t addr_len;
@@ -49,71 +52,51 @@ void handle_packet(int* num_connections, string path, int sockfd, int* sequence_
     int numbytes;
     char s[INET6_ADDRSTRLEN];
     char buf[BUFFER_SIZE] = {0};
-    memset(buf, '\0', sizeof(buf));
+    unsigned char header[HEADER_SIZE] = {0};
+    unsigned int syn, ack;
+    unsigned short cid, flags;
 
-    //Receive bytes
+    //Receive initial packet
     addr_len = sizeof(their_addr);
     if ((numbytes = recvfrom(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
         cerr << "ERROR: recvfrom";
         exit(5);
     }
 
-    
-    //Print useful debug info
-    // printf("listener: got packet from %s\n", inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s));
-    // printf("listener: packet is %d bytes long\n", numbytes);
-    // buf[numbytes] = '\0';
-    // printf("listener: packet contains \"%s\"\n", buf);
-
-    unsigned char header[HEADER_SIZE];
-    //buffer, syn/seq number, ack number, cid, flags
-    convert_to_buffer(header, 12345, 0  , 12, 2);
-
-    //print out hex
-    // cout << "Hex: ";
-    // for (int z = 0; z < 12; z++)
-    //     printf("%x ", (unsigned char)header[z]);
-    // cout << endl;
-
-    unsigned int syn;
-    unsigned int ack;
-    unsigned short cid;
-    unsigned short flags;
+    //Receive packet and extract the header here... currently hardcoded.
+    convert_to_buffer(header, 12345, 0, 12, 2);
     get_header_info(header, syn, ack, cid, flags);
-
-    // printf("Header values: %d %d %d %d\n", syn, ack, cid, flags);
 
     //if only syn flag...
     if(flags == 2) {
-        cout << "header size: " << sizeof(header) << endl;
         memset(&header, 0, sizeof(header));
 
         //hard coded values for now
-        convert_to_buffer(header, 4321, syn+1, 1, A_FLAG | S_FLAG );
+        //converts these values into the header
+        (*num_connections)++;
+        convert_to_buffer(header, SERVER_INITIAL_SEQUENCE_NUMBER, syn+1, *num_connections, A_FLAG | S_FLAG );
+        //uses header ptr/array and stores values into these variables appropriately
         get_header_info(header, syn, ack, cid, flags);
-
         printf("Header values: %d %d %d %d\n", syn, ack, cid, flags);
 
         //send part 2 of handshake
         sendto(sockfd, header, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
+        
         numbytes = recvfrom(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, &addr_len);
         buf[numbytes] = '\0';
         cout << "second buf: " << buf;
         // printf("listener: packet contains \"%s\"\n", buf);
     }
 
-    //one connection id per client
-
-    //
 
 
-    //write to file
-    if(numbytes > 0) {
-        (*num_connections)++;
-        string folder = path;
-        string filepath = "./" + to_string(*num_connections) + ".file";
-        // write_to_file(*num_connections, filepath, buf, numbytes);
-    }
+    // //write to file
+    // if(numbytes > 0) {
+    //     (*num_connections)++;
+    //     string folder = path;
+    //     string filepath = "./" + to_string(*num_connections) + ".file";
+    //     // write_to_file(*num_connections, filepath, buf, numbytes);
+    // }
 }
 
 
@@ -186,6 +169,7 @@ int main(int argc, char *argv[])
 
     //At this point, handle the packet recieved
     while(1) {
+        //hang at recvfrom() so the while loop is okay here..?
         handle_packet(&num_connections, argv[2], sockfd, &sequence_number);
 
         //threads... it hangs on the rcvfrom so can create a thread after the first rcvfrom?
@@ -199,3 +183,10 @@ int main(int argc, char *argv[])
 
     close(sockfd);
 }
+
+
+    //Print useful debug info
+    // printf("listener: got packet from %s\n", inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s));
+    // printf("listener: packet is %d bytes long\n", numbytes);
+    // buf[numbytes] = '\0';
+    // printf("listener: packet contains \"%s\"\n", buf);
