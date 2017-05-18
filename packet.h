@@ -23,7 +23,13 @@ public:
 	
 	void read_buffer() const;
 	
+	void read_header() const;
+	
 	char* get_buffer() const;
+	unsigned int get_syn() const:
+	unsigned int get_ack() const:
+	unsigned short get_cid() const:
+	unsigned short get_flags() const:
 private:
 	char m_header[HEADER_SIZE];
 	unsigned int m_syn, m_ack;

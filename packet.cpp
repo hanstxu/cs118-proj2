@@ -1,5 +1,7 @@
 #include "packet.h"
 
+#define CHECK_BIT(var,pos) ((var) & (1<<(pos)))
+
 Packet::Packet(unsigned int syn, unsigned int ack, unsigned short cid,
 	unsigned short flags, unsigned int payload_size) {
 	m_syn = 0, m_ack = 0, m_cid = 0, m_flags = 0;
@@ -39,6 +41,36 @@ void Packet::read_buffer() const {
 	cout << endl;
 }
 
+void Packet::read_header() const {
+	cout << "Sequence Number: " << m_syn << endl;
+	cout << "Acknowledgement Number: " << m_ack << endl;
+	cout << "Connection ID: " << m_cid << endl;
+	cout << "Flags: ";
+	if (CHECK_BIT(m_flags, 2))
+		cout << "A_Flag ";
+	if (CHECK_BIT(m_flags, 1))
+		cout << "S_Flag ";
+	if (CHECK_BIT(m_flags, 0))
+		cout << "F_Flag ";
+	cout << endl;
+}
+
 char* Packet::get_buffer() const {
 	return m_packet;
+}
+
+unsigned int Packet::get_syn() const {
+	return m_syn;
+}
+
+unsigned int Packet::get_ack() const {
+	return m_ack;
+}
+
+unsigned short Packet::get_cid() const {
+	return m_cid;
+}
+
+unsigned short Packet::get_flags() const {
+	return m_flags;
 }

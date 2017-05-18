@@ -35,15 +35,15 @@ void write_to_file (int num_connections, string filepath, char* buf, int numbyte
     o_file.close();
 }
 
-void handle_packet(int* num_connections, string path, int sockfd, int* sequence_number) {
+void handle_packet(unsigned int* num_connections, string path, int sockfd, int* sequence_number) {
     socklen_t addr_len;
     struct sockaddr_storage their_addr;
     int numbytes;
     // char s[INET6_ADDRSTRLEN];
     char buf[BUFFER_SIZE] = {0};
     char header[HEADER_SIZE] = {0};
-    unsigned int syn, ack;
-    unsigned short cid, flags;
+    // unsigned int syn, ack;
+    // unsigned short cid, flags;
 
     //RECEIVE PACKET
     addr_len = sizeof(their_addr);
@@ -52,40 +52,40 @@ void handle_packet(int* num_connections, string path, int sockfd, int* sequence_
         exit(5);
     }
 
-    //Extract info from packet.
+    //Extract info from packet and set syn, ack, cid, flags, and payload.
     Packet p(buf, numbytes-HEADER_SIZE);
-    //syn, ack, cid, flags, and payload will all be set at this point.
-
 
     //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE
     if(p.m_flags == S_FLAG && (*num_connections == 0)) {
         memset(&header, 0, sizeof(header));
         (*num_connections)++;
 
-        unsigned int handshake_ack = syn+1;
+        unsigned int handshake_ack = p.m_syn+1;
+        unsigned int syninit = 4321;
         //default values          syn                             ack            cid               flags    
         // convert_to_buffer(header, SERVER_INITIAL_SEQUENCE_NUMBER, handshake_ack, *num_connections, A_FLAG | S_FLAG );
-        Packet packet_to_send(SERVER_INITIAL_SEQUENCE_NUMBER, handshake_ack, *num_connections, A_FLAG | S_FLAG);
-
+        Packet packet_to_send(syninit, handshake_ack, *num_connections, A_FLAG | S_FLAG, 0);
+        packet_to_send.set_packet("");
         //send part 2 of handshake
-        sendto(sockfd, packet_to_send.set_packet(""), BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
+        // packet_to_send.get_buffer();
+        sendto(sockfd, packet_to_send.get_buffer(), BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
     }
 
     //CASE: FIN FLAG ONLY, PART 1 OF TERMINATE
-    if(flags == F_FLAG) {
+    if(p.m_flags == F_FLAG) {
         //SEND ACK AFTER RECEIVING FIN
         memset(&header, 0, sizeof(header));
         unsigned int fin_sequence_number = 4322;
-        unsigned int fin_ack_number = syn+1;
-        convert_to_buffer(header, fin_sequence_number, fin_ack_number, cid, A_FLAG);
+        unsigned int fin_ack_number = p.m_syn+1;
+        convert_to_buffer(header, fin_sequence_number, fin_ack_number, p.m_cid, A_FLAG);
         sendto(sockfd, header, BUFFER_SIZE-1, 0, (struct sockaddr *)&their_addr, addr_len);
 
         //SEND FIN AND EXPECT ACK IN RETURN
         memset(&header, 0, sizeof(header));
         fin_sequence_number = 4322;             //currently hardcoded
         fin_ack_number = 0;
-        convert_to_buffer(header, fin_sequence_number, fin_ack_number, cid, F_FLAG);
+        convert_to_buffer(header, fin_sequence_number, fin_ack_number, p.m_cid, F_FLAG);
         sendto(sockfd, header, BUFFER_SIZE-1, 0, (struct sockaddr *)&their_addr, addr_len);
         
         //EXPECTING ACK IN RETURN...
@@ -112,7 +112,7 @@ int main(int argc, char *argv[])
     int sockfd;
     struct addrinfo hints, *servinfo, *p;
     int rv;
-    int num_connections = 0;
+    unsigned int num_connections = 0;
     int sequence_number = 4321;
 
     //Handle basic command line argument inputs
