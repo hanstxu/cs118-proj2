@@ -2,7 +2,8 @@
 
 Packet::Packet(unsigned int syn, unsigned int ack, unsigned short cid,
 	unsigned short flags, unsigned int payload_size) {
-	convert_to_buffer(m_header, m_syn, m_ack, m_cid, m_flags);
+	m_syn = 0, m_ack = 0, m_cid = 0, m_flags = 0;
+	convert_to_buffer(m_header, syn, ack, cid, flags);
 	m_payload_size = payload_size;
 	m_payload = new char[payload_size];
 	m_packet = new char[payload_size + HEADER_SIZE];
