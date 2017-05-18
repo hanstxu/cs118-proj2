@@ -26,14 +26,14 @@ void *get_in_addr(struct sockaddr *sa)
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-void write_to_file (int num_connections, string filepath, char* buf, int numbytes){
+/* void write_to_file (int num_connections, string filepath, unsigned char* buf, int numbytes){
     ofstream o_file;
     o_file.open(filepath, ios::app | ios::out | ios::binary);
-    o_file.write(buf, numbytes);
+    o_file.write((char*)buf, numbytes);
     cout << "filepath: " << filepath << endl << "buf: " << buf << endl;
     memset(buf, '\0', BUFFER_SIZE);
     o_file.close();
-}
+} */
 
 void handle_packet(unsigned int* num_connections, string path, int sockfd, int* sequence_number) {
     socklen_t addr_len;
@@ -63,7 +63,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 		unsigned int new_syn = p_receive.get_syn() + 1;
 
         Packet packet_to_send(4321, new_syn, *num_connections, A_FLAG | S_FLAG, 0);
-        packet_to_send.set_packet("");
+        packet_to_send.set_packet(NULL);
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
     }
@@ -71,17 +71,24 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     //CASE: ACK FLAG ONLY, RECEIVE FILE AND REPLY WITH ACK.     
     if(CHECK_BIT(p_receive.get_flags(), 2)) {
 
+		p_receive.read_payload();
         if(numbytes > 0) {
-            string folder = path;
+			
+			ofstream file;
+			file.open("1.file", ios::out | ios::binary | ios::app);
+			
+			file.write((char*)p_receive.get_payload(), p_receive.get_size() - HEADER_SIZE);
+			file.close();
+            /* string folder = path;
             string filepath = "./" + to_string(*num_connections) + ".file";
             // string filepath = folder + "/" + to_string(*num_connections) + ".file";
-            write_to_file(*num_connections, filepath, buf, numbytes);
+            write_to_file(*num_connections, filepath, p_receive.get_buffer(), p_receive.get_size() - HEADER_SIZE); */
         }
 
         unsigned int send_syn = p_receive.get_ack();                                            //syn = recieved ack
         unsigned int send_ack = p_receive.get_syn() + p_receive.get_size() - HEADER_SIZE;       //ack = syn + payload size
         Packet packet_to_send(send_syn, send_ack, p_receive.get_cid(), A_FLAG, 0);
-        packet_to_send.set_packet("");
+        packet_to_send.set_packet(NULL);
         cout << "test ack: ";
         packet_to_send.read_header();
 

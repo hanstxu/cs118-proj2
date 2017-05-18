@@ -21,6 +21,7 @@ Packet::Packet(unsigned char* buffer, unsigned int payload_size) {
 	cout << m_syn << endl;
 	m_payload_size = payload_size;
 	m_payload = new unsigned char[payload_size];
+	memcpy(m_payload, &buffer[12], m_payload_size);
 	m_packet = new unsigned char[payload_size + HEADER_SIZE];
 }
 
@@ -60,8 +61,16 @@ void Packet::read_header() const {
 	cout << endl;
 }
 
+void Packet::read_payload() const {
+	printf("%s", m_payload);
+}
+
 unsigned char* Packet::get_buffer() const {
 	return m_packet;
+}
+
+unsigned char* Packet::get_payload() const {
+	return m_payload;
 }
 
 unsigned int Packet::get_syn() const {

@@ -27,7 +27,10 @@ public:
 	
 	void read_header() const;
 	
+	void read_payload() const;
+	
 	unsigned char* get_buffer() const;
+	unsigned char* get_payload() const;
 	unsigned int get_syn() const;
 	unsigned int get_ack() const;
 	unsigned short get_cid() const;

@@ -13,6 +13,8 @@
 #include "packet.h"
 using namespace std;
 
+#define CLIENT_START 12345
+
 void initiate_handshake(unsigned char* buffer, char* src_ip, char* src_port,
 	char* dst_ip, char* dst_port) {
 	memcpy(buffer, "src-ip=", 7);
@@ -66,11 +68,8 @@ int main(int argc, char* argv[]) {
 	}
 	
 	//initiate_handshake(payload, argv[1], argv[2], argv[1], argv[2]);
-	Packet one(12345, 0, 0, S_FLAG, 0);
-	
-	one.set_packet("");
-	
-	//one.read_buffer();
+	Packet one(CLIENT_START, 0, 0, S_FLAG, 0);
+	one.set_packet(NULL);
 	
 	sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
@@ -86,6 +85,41 @@ int main(int argc, char* argv[]) {
 	Packet two(buffer, numbytes-HEADER_SIZE);
 	two.read_header();
 	
+	FILE* filp = fopen(argv[3], "rb");
+	if (!filp) {
+		cerr << "ERROR: could not open file: " << argv[3] << endl;
+		exit(EXIT_FAILURE);
+	}
+	
+	unsigned char* read_buffer = new unsigned char[PAYLOAD_SIZE];
+	
+	int num_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
+	
+	Packet three(two.get_ack(), two.get_syn() + 1, two.get_cid(), A_FLAG, num_bytes);
+	three.set_packet(read_buffer);
+	
+	printf("%s", read_buffer);
+	
+	sendto(sockfd, three.get_buffer(), three.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
+	
+	while (num_bytes > 0) {
+		numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
+		if (numbytes < 0) {
+			cerr << "ERROR: recvfrom";
+			exit(EXIT_FAILURE);
+		}
+		
+		Packet receive_packet(buffer, numbytes-HEADER_SIZE);
+		
+		num_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
+		
+		Packet file_packet(receive_packet.get_ack(), receive_packet.get_syn() + 1, receive_packet.get_cid(), A_FLAG, num_bytes);
+		file_packet.set_packet(read_buffer);
+	
+		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
+	}
+	
+	delete read_buffer;
 	close(sockfd);
 	freeaddrinfo(servinfo);
 	return 0;
