@@ -51,11 +51,12 @@ void handle_packet(int* num_connections, string path, int sockfd, int* sequence_
         cerr << "ERROR: recvfrom";
         exit(5);
     }
-
-    //Extract header from packet.
+    //Hardcoded value for packet sent to us... (this should be what's received in recvfrom()).
     convert_to_buffer(header, 12345, 0, 12, 2);         //Currently hardcoded header...
-    get_header_info(header, syn, ack, cid, flags);
 
+    //Extract info from packet.
+    get_header_info(header, syn, ack, cid, flags);
+    //syn, ack, cid, flags, and payload will all be set at this point.
 
     //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE
     if(flags == S_FLAG && (*num_connections == 0)) {
@@ -68,7 +69,6 @@ void handle_packet(int* num_connections, string path, int sockfd, int* sequence_
         
         //send part 2 of handshake
         sendto(sockfd, header, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
-
         return;
     }
 
@@ -83,7 +83,7 @@ void handle_packet(int* num_connections, string path, int sockfd, int* sequence_
 
         //SEND FIN AND EXPECT ACK IN RETURN
         memset(&header, 0, sizeof(header));
-        fin_sequence_number = 4322;
+        fin_sequence_number = 4322;             //currently hardcoded
         fin_ack_number = 0;
         convert_to_buffer(header, fin_sequence_number, fin_ack_number, cid, F_FLAG);
         sendto(sockfd, header, BUFFER_SIZE-1, 0, (struct sockaddr *)&their_addr, addr_len);
