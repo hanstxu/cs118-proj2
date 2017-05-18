@@ -2,7 +2,7 @@ CXX=g++
 CXXOPTIMIZE= -O2
 CXXFLAGS= -g -Wall -pthread -std=c++11 $(CXXOPTIMIZE)
 USERID=123456789
-CLASSES=header.h header.cpp
+CLASSES=header.h header.cpp packet.h packet.cpp
 
 all: server client
 
