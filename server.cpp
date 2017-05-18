@@ -41,7 +41,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     int numbytes;
     // char s[INET6_ADDRSTRLEN];
     unsigned char buf[BUFFER_SIZE] = {0};
-    unsigned char header[HEADER_SIZE] = {0};
+    // unsigned char header[HEADER_SIZE] = {0};
     // unsigned int syn, ack;
     // unsigned short cid, flags;
 
@@ -53,19 +53,31 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     }
 
     //Extract info from packet and set syn, ack, cid, flags, and payload.
-    Packet p(buf, numbytes-HEADER_SIZE);
+    Packet p_receive(buf, numbytes-HEADER_SIZE);
 
-	p.read_header();
-    //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE
-    if(CHECK_BIT(p.get_flags(), 1) && (*num_connections == 0)) {
+	p_receive.read_header();
+    //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE, REPLY WITH SYN-ACK
+    if(CHECK_BIT(p_receive.get_flags(), 1) && (*num_connections == 0)) {
         (*num_connections)++;
 		
-		unsigned int new_syn = p.get_syn() + 1;
+		unsigned int new_syn = p_receive.get_syn() + 1;
 
         Packet packet_to_send(4321, new_syn, *num_connections, A_FLAG | S_FLAG, 0);
         packet_to_send.set_packet("");
-        sendto(sockfd, packet_to_send.get_buffer(), p.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
+        sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
+    }
+
+    //CASE: ACK FLAG ONLY, RECEIVE FILE AND REPLY WITH ACK.     
+    if(CHECK_BIT(p_receive.get_flags(), 2)) {
+        unsigned int send_syn = p_receive.get_ack();
+        unsigned int send_ack = p_receive.get_syn() + p_receive.get_size() - HEADER_SIZE;
+        Packet packet_to_send(send_syn, send_ack, p_receive.get_cid(), A_FLAG, 0);
+        packet_to_send.set_packet("");
+        cout << "test ack: ";
+        packet_to_send.read_header();
+
+        sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
     }
 
     // //CASE: FIN FLAG ONLY, PART 1 OF TERMINATE
