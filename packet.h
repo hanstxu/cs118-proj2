@@ -22,7 +22,8 @@ public:
 	void set_packet(char* buffer);
 	
 	void read_buffer() const;
-private:
+	char*  get_buffer() const;
+
 	char m_header[HEADER_SIZE];
 	unsigned int m_syn, m_ack;
 	unsigned short m_cid, m_flags;

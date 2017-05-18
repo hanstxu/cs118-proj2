@@ -35,7 +35,7 @@ void write_to_file (int num_connections, string filepath, char* buf, int numbyte
     o_file.close();
 }
 
-void handle_packet(int* num_connections, string path, int sockfd, int* sequence_number) {
+void handle_packet(unsigned int* num_connections, string path, int sockfd, int* sequence_number) {
     socklen_t addr_len;
     struct sockaddr_storage their_addr;
     int numbytes;
@@ -63,12 +63,14 @@ void handle_packet(int* num_connections, string path, int sockfd, int* sequence_
         (*num_connections)++;
 
         unsigned int handshake_ack = syn+1;
+        unsigned int syninit = 4321;
         //default values          syn                             ack            cid               flags    
         // convert_to_buffer(header, SERVER_INITIAL_SEQUENCE_NUMBER, handshake_ack, *num_connections, A_FLAG | S_FLAG );
-        Packet packet_to_send(SERVER_INITIAL_SEQUENCE_NUMBER, handshake_ack, *num_connections, A_FLAG | S_FLAG);
-
+        Packet packet_to_send(syninit, handshake_ack, *num_connections, A_FLAG | S_FLAG, 0);
+        packet_to_send.set_packet("");
         //send part 2 of handshake
-        sendto(sockfd, packet_to_send.set_packet(""), BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
+        // packet_to_send.get_buffer();
+        sendto(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
     }
 
@@ -112,7 +114,7 @@ int main(int argc, char *argv[])
     int sockfd;
     struct addrinfo hints, *servinfo, *p;
     int rv;
-    int num_connections = 0;
+    unsigned int num_connections = 0;
     int sequence_number = 4321;
 
     //Handle basic command line argument inputs
