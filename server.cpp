@@ -1,5 +1,4 @@
 #include <string.h>
-#include <thread>
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -12,25 +11,18 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-#include <thread>         // std::thread
 #include <vector>
-
 #include "header.h"
+using namespace std;
 
-
-#define MAXBUFLEN 100
-#define MYPORT "4950"    // the port users will be connecting to
 #define SERVER_INITIAL_SEQUENCE_NUMBER 4321
 #define BUFFER_SIZE 512
-
-using namespace std;
 
 void *get_in_addr(struct sockaddr *sa)
 {
     if (sa->sa_family == AF_INET) {
         return &(((struct sockaddr_in*)sa)->sin_addr);
     }
-
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
@@ -53,19 +45,18 @@ void handle_packet(int* num_connections, string path, int sockfd, int* sequence_
     unsigned int syn, ack;
     unsigned short cid, flags;
 
-
     //RECEIVE PACKET
     addr_len = sizeof(their_addr);
     if ((numbytes = recvfrom(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
         cerr << "ERROR: recvfrom";
         exit(5);
     }
-
-
-    //Extract header from packet.
+    //Hardcoded value for packet sent to us... (this should be what's received in recvfrom()).
     convert_to_buffer(header, 12345, 0, 12, 2);         //Currently hardcoded header...
-    get_header_info(header, syn, ack, cid, flags);
 
+    //Extract info from packet.
+    get_header_info(header, syn, ack, cid, flags);
+    //syn, ack, cid, flags, and payload will all be set at this point.
 
     //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE
     if(flags == S_FLAG && (*num_connections == 0)) {
@@ -78,7 +69,6 @@ void handle_packet(int* num_connections, string path, int sockfd, int* sequence_
         
         //send part 2 of handshake
         sendto(sockfd, header, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
-
         return;
     }
 
@@ -93,7 +83,7 @@ void handle_packet(int* num_connections, string path, int sockfd, int* sequence_
 
         //SEND FIN AND EXPECT ACK IN RETURN
         memset(&header, 0, sizeof(header));
-        fin_sequence_number = 4322;
+        fin_sequence_number = 4322;             //currently hardcoded
         fin_ack_number = 0;
         convert_to_buffer(header, fin_sequence_number, fin_ack_number, cid, F_FLAG);
         sendto(sockfd, header, BUFFER_SIZE-1, 0, (struct sockaddr *)&their_addr, addr_len);
@@ -106,16 +96,14 @@ void handle_packet(int* num_connections, string path, int sockfd, int* sequence_
 
     }
 
-
     //write to file
     if(numbytes > 0) {
         string folder = path;
         string filepath = "./" + to_string(*num_connections) + ".file";
+        // string filepath = folder + "/" + to_string(*num_connections) + ".file";
         write_to_file(*num_connections, filepath, buf, numbytes);
     }
 }
-
-
 
 int main(int argc, char *argv[])
 {
@@ -126,8 +114,6 @@ int main(int argc, char *argv[])
     int rv;
     int num_connections = 0;
     int sequence_number = 4321;
-
-    vector<thread> threads;
 
     //Handle basic command line argument inputs
     //server <PORT> <FILE-DIR>
@@ -186,25 +172,8 @@ int main(int argc, char *argv[])
     //At this point, handle the packet recieved
     while(1) {
         //hang at recvfrom() so the while loop is okay here..?
-
-
         handle_packet(&num_connections, argv[2], sockfd, &sequence_number);
-
-        //threads... it hangs on the rcvfrom so can create a thread after the first rcvfrom?
-
-        // threads.push_back(thread(handle_packet, &num_connections, argv[2], sockfd, &sequence_number));
     }
-
-    // for(size_t i = 0; i < threads.size(); i++) {
-    //     threads[i].join();
-    // }
-
+    
     close(sockfd);
 }
-
-
-    //Print useful debug info
-    // printf("listener: got packet from %s\n", inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s));
-    // printf("listener: packet is %d bytes long\n", numbytes);
-    // buf[numbytes] = '\0';
-    // printf("listener: packet contains \"%s\"\n", buf);
