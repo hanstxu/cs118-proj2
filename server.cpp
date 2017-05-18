@@ -49,7 +49,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     addr_len = sizeof(their_addr);
     if ((numbytes = recvfrom(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
         cerr << "ERROR: recvfrom";
-        exit(5);
+        exit(5);   
     }
 
     //Extract info from packet and set syn, ack, cid, flags, and payload.
@@ -60,49 +60,43 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         memset(&header, 0, sizeof(header));
         (*num_connections)++;
 
-        unsigned int handshake_ack = p.m_syn+1;
-        unsigned int syninit = 4321;
-        //default values          syn                             ack            cid               flags    
-        // convert_to_buffer(header, SERVER_INITIAL_SEQUENCE_NUMBER, handshake_ack, *num_connections, A_FLAG | S_FLAG );
-        Packet packet_to_send(syninit, handshake_ack, *num_connections, A_FLAG | S_FLAG, 0);
+        Packet packet_to_send(SERVER_INITIAL_SEQUENCE_NUMBER, p.my_syn+1, *num_connections, A_FLAG | S_FLAG, 0);
         packet_to_send.set_packet("");
-        //send part 2 of handshake
-        // packet_to_send.get_buffer();
         sendto(sockfd, packet_to_send.get_buffer(), BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
     }
 
-    //CASE: FIN FLAG ONLY, PART 1 OF TERMINATE
-    if(p.m_flags == F_FLAG) {
-        //SEND ACK AFTER RECEIVING FIN
-        memset(&header, 0, sizeof(header));
-        unsigned int fin_sequence_number = 4322;
-        unsigned int fin_ack_number = p.m_syn+1;
-        convert_to_buffer(header, fin_sequence_number, fin_ack_number, p.m_cid, A_FLAG);
-        sendto(sockfd, header, BUFFER_SIZE-1, 0, (struct sockaddr *)&their_addr, addr_len);
+    // //CASE: FIN FLAG ONLY, PART 1 OF TERMINATE
+    // if(p.m_flags == F_FLAG) {
+    //     //SEND ACK AFTER RECEIVING FIN
+    //     memset(&header, 0, sizeof(header));
+    //     unsigned int fin_sequence_number = 4322;
+    //     unsigned int fin_ack_number = p.m_syn+1;
+    //     convert_to_buffer(header, fin_sequence_number, fin_ack_number, p.m_cid, A_FLAG);
+    //     sendto(sockfd, header, BUFFER_SIZE-1, 0, (struct sockaddr *)&their_addr, addr_len);
 
-        //SEND FIN AND EXPECT ACK IN RETURN
-        memset(&header, 0, sizeof(header));
-        fin_sequence_number = 4322;             //currently hardcoded
-        fin_ack_number = 0;
-        convert_to_buffer(header, fin_sequence_number, fin_ack_number, p.m_cid, F_FLAG);
-        sendto(sockfd, header, BUFFER_SIZE-1, 0, (struct sockaddr *)&their_addr, addr_len);
+    //     //SEND FIN AND EXPECT ACK IN RETURN
+    //     memset(&header, 0, sizeof(header));
+    //     fin_sequence_number = 4322;             //currently hardcoded
+    //     fin_ack_number = 0;
+    //     convert_to_buffer(header, fin_sequence_number, fin_ack_number, p.m_cid, F_FLAG);
+    //     sendto(sockfd, header, BUFFER_SIZE-1, 0, (struct sockaddr *)&their_addr, addr_len);
         
-        //EXPECTING ACK IN RETURN...
-        if ((numbytes = recvfrom(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
-            cerr << "ERROR: recvfrom";
-            exit(5);
-        }
+    //     //EXPECTING ACK IN RETURN...
+    //     if ((numbytes = recvfrom(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
+    //         cerr << "ERROR: recvfrom";
+    //         exit(5);
+    //     }
 
-    }
+    // }
 
-    //write to file
-    if(numbytes > 0) {
-        string folder = path;
-        string filepath = "./" + to_string(*num_connections) + ".file";
-        // string filepath = folder + "/" + to_string(*num_connections) + ".file";
-        write_to_file(*num_connections, filepath, buf, numbytes);
-    }
+    // //write to file
+    // if(numbytes > 0) {
+    //     string folder = path;
+    //     string filepath = "./" + to_string(*num_connections) + ".file";
+    //     // string filepath = folder + "/" + to_string(*num_connections) + ".file";
+    //     write_to_file(*num_connections, filepath, buf, numbytes);
+    // }
 }
 
 int main(int argc, char *argv[])

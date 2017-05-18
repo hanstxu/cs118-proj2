@@ -1,5 +1,6 @@
 #include "packet.h"
 
+//Send packet declaration. Take in syn, ack, cid, flags, payload size and set the m_header accordingly.
 Packet::Packet(unsigned int syn, unsigned int ack, unsigned short cid,
 	unsigned short flags, unsigned int payload_size) {
 	m_syn = 0, m_ack = 0, m_cid = 0, m_flags = 0;
@@ -9,6 +10,7 @@ Packet::Packet(unsigned int syn, unsigned int ack, unsigned short cid,
 	m_packet = new char[payload_size + HEADER_SIZE];
 }
 
+//Receive packet declaration. Take in buffer and set the m_syn, m_ack, m_cid, m_flags accordingly.
 Packet::Packet(char* buffer, unsigned int payload_size) {
 	memset(m_header, 0, HEADER_SIZE);
 	get_header_info(buffer, m_syn, m_ack, m_cid, m_flags);
