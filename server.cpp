@@ -42,8 +42,8 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     // char s[INET6_ADDRSTRLEN];
     char buf[BUFFER_SIZE] = {0};
     char header[HEADER_SIZE] = {0};
-    unsigned int syn, ack;
-    unsigned short cid, flags;
+    // unsigned int syn, ack;
+    // unsigned short cid, flags;
 
     //RECEIVE PACKET
     addr_len = sizeof(their_addr);
@@ -60,7 +60,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         memset(&header, 0, sizeof(header));
         (*num_connections)++;
 
-        unsigned int handshake_ack = syn+1;
+        unsigned int handshake_ack = p.m_syn+1;
         unsigned int syninit = 4321;
         //default values          syn                             ack            cid               flags    
         // convert_to_buffer(header, SERVER_INITIAL_SEQUENCE_NUMBER, handshake_ack, *num_connections, A_FLAG | S_FLAG );
@@ -73,19 +73,19 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     }
 
     //CASE: FIN FLAG ONLY, PART 1 OF TERMINATE
-    if(flags == F_FLAG) {
+    if(p.m_flags == F_FLAG) {
         //SEND ACK AFTER RECEIVING FIN
         memset(&header, 0, sizeof(header));
         unsigned int fin_sequence_number = 4322;
-        unsigned int fin_ack_number = syn+1;
-        convert_to_buffer(header, fin_sequence_number, fin_ack_number, cid, A_FLAG);
+        unsigned int fin_ack_number = p.m_syn+1;
+        convert_to_buffer(header, fin_sequence_number, fin_ack_number, p.m_cid, A_FLAG);
         sendto(sockfd, header, BUFFER_SIZE-1, 0, (struct sockaddr *)&their_addr, addr_len);
 
         //SEND FIN AND EXPECT ACK IN RETURN
         memset(&header, 0, sizeof(header));
         fin_sequence_number = 4322;             //currently hardcoded
         fin_ack_number = 0;
-        convert_to_buffer(header, fin_sequence_number, fin_ack_number, cid, F_FLAG);
+        convert_to_buffer(header, fin_sequence_number, fin_ack_number, p.m_cid, F_FLAG);
         sendto(sockfd, header, BUFFER_SIZE-1, 0, (struct sockaddr *)&their_addr, addr_len);
         
         //EXPECTING ACK IN RETURN...
