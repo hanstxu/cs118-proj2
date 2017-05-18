@@ -74,6 +74,18 @@ int main(int argc, char* argv[]) {
 	
 	sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
+	int numbytes;
+	char buffer[PACKET_SIZE];
+	
+	numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
+	if (numbytes < 0) {
+		cerr << "ERROR: recvfrom";
+		exit(EXIT_FAILURE);
+	}
+	
+	Packet two(buffer, numbytes-HEADER_SIZE);
+	two.read_header();
+	
 	close(sockfd);
 	freeaddrinfo(servinfo);
 	return 0;

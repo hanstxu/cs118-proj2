@@ -55,14 +55,17 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     //Extract info from packet and set syn, ack, cid, flags, and payload.
     Packet p(buf, numbytes-HEADER_SIZE);
 
+	p.read_header();
     //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE
-    if(p.m_flags == S_FLAG && (*num_connections == 0)) {
-        memset(&header, 0, sizeof(header));
+    if(CHECK_BIT(p.get_flags(), 1) && (*num_connections == 0)) {
+        cout << "hello" << endl;
         (*num_connections)++;
+		
+		unsigned int new_syn = p.get_syn() + 1;
 
-        Packet packet_to_send(SERVER_INITIAL_SEQUENCE_NUMBER, p.my_syn+1, *num_connections, A_FLAG | S_FLAG, 0);
+        Packet packet_to_send(4321, new_syn, *num_connections, A_FLAG | S_FLAG, 0);
         packet_to_send.set_packet("");
-        sendto(sockfd, packet_to_send.get_buffer(), BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
+        sendto(sockfd, packet_to_send.get_buffer(), p.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
     }
 
