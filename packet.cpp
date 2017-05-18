@@ -37,5 +37,8 @@ void Packet::read_buffer() const {
 	for (; i < 12 + m_payload_size; i++)
 		printf("%x ", (unsigned char)m_packet[i]);
 	cout << endl;
-	
+}
+
+char* Packet::get_buffer() const {
+	return m_packet;
 }

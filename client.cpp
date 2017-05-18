@@ -66,12 +66,13 @@ int main(int argc, char* argv[]) {
 	}
 	
 	//initiate_handshake(payload, argv[1], argv[2], argv[1], argv[2]);
-	//sendto(sockfd, packet, HEADER_SIZE + 38, 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	Packet one(12345, 0, 0, S_FLAG, 0);
 	
 	one.set_packet("");
 	
-	one.read_buffer();
+	//one.read_buffer();
+	
+	sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
 	close(sockfd);
 	freeaddrinfo(servinfo);
