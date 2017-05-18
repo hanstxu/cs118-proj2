@@ -12,7 +12,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <vector>
-#include "header.h"
+#include "packet.h"
 using namespace std;
 
 #define SERVER_INITIAL_SEQUENCE_NUMBER 4321
@@ -51,24 +51,24 @@ void handle_packet(int* num_connections, string path, int sockfd, int* sequence_
         cerr << "ERROR: recvfrom";
         exit(5);
     }
-    //Hardcoded value for packet sent to us... (this should be what's received in recvfrom()).
-    convert_to_buffer(header, 12345, 0, 12, 2);         //Currently hardcoded header...
 
     //Extract info from packet.
-    get_header_info(header, syn, ack, cid, flags);
+    Packet p(buf, numbytes-HEADER_SIZE);
     //syn, ack, cid, flags, and payload will all be set at this point.
 
+
     //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE
-    if(flags == S_FLAG && (*num_connections == 0)) {
+    if(p.m_flags == S_FLAG && (*num_connections == 0)) {
         memset(&header, 0, sizeof(header));
         (*num_connections)++;
 
         unsigned int handshake_ack = syn+1;
         //default values          syn                             ack            cid               flags    
-        convert_to_buffer(header, SERVER_INITIAL_SEQUENCE_NUMBER, handshake_ack, *num_connections, A_FLAG | S_FLAG );
-        
+        // convert_to_buffer(header, SERVER_INITIAL_SEQUENCE_NUMBER, handshake_ack, *num_connections, A_FLAG | S_FLAG );
+        Packet packet_to_send(SERVER_INITIAL_SEQUENCE_NUMBER, handshake_ack, *num_connections, A_FLAG | S_FLAG);
+
         //send part 2 of handshake
-        sendto(sockfd, header, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
+        sendto(sockfd, packet_to_send.set_packet(""), BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
     }
 
