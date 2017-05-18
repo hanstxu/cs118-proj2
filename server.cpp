@@ -70,8 +70,16 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 
     //CASE: ACK FLAG ONLY, RECEIVE FILE AND REPLY WITH ACK.     
     if(CHECK_BIT(p_receive.get_flags(), 2)) {
-        unsigned int send_syn = p_receive.get_ack();
-        unsigned int send_ack = p_receive.get_syn() + p_receive.get_size() - HEADER_SIZE;
+
+        if(numbytes > 0) {
+            string folder = path;
+            string filepath = "./" + to_string(*num_connections) + ".file";
+            // string filepath = folder + "/" + to_string(*num_connections) + ".file";
+            write_to_file(*num_connections, filepath, buf, numbytes);
+        }
+
+        unsigned int send_syn = p_receive.get_ack();                                            //syn = recieved ack
+        unsigned int send_ack = p_receive.get_syn() + p_receive.get_size() - HEADER_SIZE;       //ack = syn + payload size
         Packet packet_to_send(send_syn, send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet("");
         cout << "test ack: ";
