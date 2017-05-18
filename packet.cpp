@@ -29,7 +29,7 @@ Packet::~Packet() {
 	delete m_packet;
 }
 
-void Packet::set_packet(char* buffer) {
+void Packet::set_packet(unsigned char* buffer) {
 	memcpy(m_payload, buffer, m_payload_size);
 	memcpy(m_packet, m_header, HEADER_SIZE);
 	memcpy(&m_packet[HEADER_SIZE], m_payload, m_payload_size);

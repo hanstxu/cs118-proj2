@@ -21,7 +21,7 @@ public:
 	
 	~Packet();
 	
-	void set_packet(char* buffer);
+	void set_packet(unsigned char* buffer);
 	
 	void read_buffer() const;
 	
