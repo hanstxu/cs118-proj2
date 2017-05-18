@@ -10,11 +10,8 @@
 #include <unistd.h>		// POSIX operating system API
 #include <stdio.h>	// for printf
 
-#include "header.h"		// header formatting functions
+#include "packet.h"
 using namespace std;
-
-#define PAYLOAD_SIZE 512
-#define PACKET_SIZE 524
 
 void initiate_handshake(char* buffer, char* src_ip, char* src_port,
 	char* dst_ip, char* dst_port) {
@@ -68,25 +65,13 @@ int main(int argc, char* argv[]) {
 		exit(EXIT_FAILURE);
 	}
 	
-	char header[HEADER_SIZE];
-	convert_to_buffer(header, 12345, 0, 0, S_FLAG);
-	
-	char payload[38];
-	initiate_handshake(payload, argv[1], argv[2], argv[1], argv[2]);
-	
-	struct addrinfo host;
-	struct addrinfo *hostinfo;  // will point to the results
-
-	memset(&host, 0, sizeof host); // make sure the struct is empty
-	host.ai_family = AF_INET;     // do
-	host.ai_socktype = SOCK_STREAM; // TCP stream sockets
-	host.ai_flags = SOCK_DGRAM;     // fill in my IP for me
-	
-	char packet[PACKET_SIZE];
-	memcpy(&packet, &header, HEADER_SIZE);
-	memcpy(&packet[HEADER_SIZE], &payload, 38);
-	
+	//initiate_handshake(payload, argv[1], argv[2], argv[1], argv[2]);
 	//sendto(sockfd, packet, HEADER_SIZE + 38, 0, servinfo->ai_addr, servinfo->ai_addrlen);
+	Packet one(12345, 0, 0, S_FLAG, 0);
+	
+	one.set_packet("");
+	
+	one.read_buffer();
 	
 	close(sockfd);
 	freeaddrinfo(servinfo);
