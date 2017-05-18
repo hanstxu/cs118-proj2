@@ -13,7 +13,7 @@
 #include "packet.h"
 using namespace std;
 
-void initiate_handshake(char* buffer, char* src_ip, char* src_port,
+void initiate_handshake(unsigned char* buffer, char* src_ip, char* src_port,
 	char* dst_ip, char* dst_port) {
 	memcpy(buffer, "src-ip=", 7);
 	memcpy(&buffer[7], ", src-port=", 11);
@@ -75,7 +75,7 @@ int main(int argc, char* argv[]) {
 	sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
 	int numbytes;
-	char buffer[PACKET_SIZE];
+	unsigned char buffer[PACKET_SIZE];
 	
 	numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
 	if (numbytes < 0) {

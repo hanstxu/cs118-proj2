@@ -40,8 +40,8 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     struct sockaddr_storage their_addr;
     int numbytes;
     // char s[INET6_ADDRSTRLEN];
-    char buf[BUFFER_SIZE] = {0};
-    char header[HEADER_SIZE] = {0};
+    unsigned char buf[BUFFER_SIZE] = {0};
+    unsigned char header[HEADER_SIZE] = {0};
     // unsigned int syn, ack;
     // unsigned short cid, flags;
 
@@ -58,7 +58,6 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 	p.read_header();
     //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE
     if(CHECK_BIT(p.get_flags(), 1) && (*num_connections == 0)) {
-        cout << "hello" << endl;
         (*num_connections)++;
 		
 		unsigned int new_syn = p.get_syn() + 1;

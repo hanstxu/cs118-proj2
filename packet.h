@@ -9,13 +9,15 @@
 #include <string.h>
 #include <stdio.h>	// for printf
 using namespace std;
-	
+
+#define CHECK_BIT(var,pos) ((var) & (1<<(pos)))
+
 class Packet {
 public:
 	Packet(unsigned int syn, unsigned int ack, unsigned short cid,
 	unsigned short flags, unsigned int payload_size);
 	
-	Packet(char* buffer, unsigned int payload_size);
+	Packet(unsigned char* buffer, unsigned int payload_size);
 	
 	~Packet();
 	
@@ -25,18 +27,19 @@ public:
 	
 	void read_header() const;
 	
-	char* get_buffer() const;
-	unsigned int get_syn() const:
-	unsigned int get_ack() const:
-	unsigned short get_cid() const:
-	unsigned short get_flags() const:
+	unsigned char* get_buffer() const;
+	unsigned int get_syn() const;
+	unsigned int get_ack() const;
+	unsigned short get_cid() const;
+	unsigned short get_flags() const;
+	unsigned int get_size() const;
 private:
-	char m_header[HEADER_SIZE];
+	unsigned char m_header[HEADER_SIZE];
 	unsigned int m_syn, m_ack;
 	unsigned short m_cid, m_flags;
 	unsigned int m_payload_size;
-	char* m_payload;
-	char* m_packet;
+	unsigned char* m_payload;
+	unsigned char* m_packet;
 };
 
 
