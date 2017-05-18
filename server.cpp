@@ -52,10 +52,8 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         exit(5);
     }
 
-    //Extract info from packet.
+    //Extract info from packet and set syn, ack, cid, flags, and payload.
     Packet p(buf, numbytes-HEADER_SIZE);
-    //syn, ack, cid, flags, and payload will all be set at this point.
-
 
     //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE
     if(p.m_flags == S_FLAG && (*num_connections == 0)) {
@@ -70,7 +68,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         packet_to_send.set_packet("");
         //send part 2 of handshake
         // packet_to_send.get_buffer();
-        sendto(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
+        sendto(sockfd, packet_to_send.get_buffer(), BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
     }
 
