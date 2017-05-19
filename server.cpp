@@ -128,6 +128,20 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     // }
 }
 
+void test_header_with_packets() {
+    cout << "Begin test..." << endl;
+
+    Packet test(12345, 4321, 10, A_FLAG | S_FLAG, 1);
+    char testbuffer[400];
+    strncpy(testbuffer, "hello world", sizeof(testbuffer));
+    test.set_packet((unsigned char*)testbuffer);
+
+    Packet test2(test.get_buffer(), 400);
+    test2.read_header();
+
+    cout << "End test..." << endl;
+}
+
 int main(int argc, char *argv[])
 {
     //Declare all variables
@@ -137,6 +151,8 @@ int main(int argc, char *argv[])
     int rv;
     unsigned int num_connections = 0;
     int sequence_number = 4321;
+
+    test_header_with_packets();
 
     //Handle basic command line argument inputs
     //server <PORT> <FILE-DIR>
