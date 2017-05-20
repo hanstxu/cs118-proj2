@@ -59,17 +59,19 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 
     //Extract info from packet and set syn, ack, cid, flags, and payload.
 
-    cout << "Recieved " << numbytes << " bytes..." << endl;
+    // cout << "Recieved " << numbytes << " bytes..." << endl;
     Packet p_receive(buf, numbytes-HEADER_SIZE);
 
     // //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE, REPLY WITH SYN-ACK
     if(CHECK_BIT(p_receive.get_flags(), 1) && (p_receive.get_cid() == 0)) {
         cout << endl << "PART 1 OF HANDSHAKE:" << endl;
         (*num_connections)++;
-		unsigned int new_syn = p_receive.get_syn() + 1;
+		unsigned int send_ack = p_receive.get_syn() + 1;
 
-        Packet packet_to_send(4321, new_syn, *num_connections, A_FLAG | S_FLAG, 0);
+        Packet packet_to_send(4321, send_ack, *num_connections, A_FLAG | S_FLAG, 0);
         packet_to_send.set_packet(NULL);
+        cout << "Server to client ACK Number: " << send_ack << endl;
+
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
     }
@@ -77,16 +79,17 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     //CASE: ACK FLAG ONLY, RECEIVE FILE AND REPLY WITH ACK.
     if(CHECK_BIT(p_receive.get_flags(), 2)) {
         cout << endl << "RECEIVE FILE HERE..." << endl;
-		p_receive.read_payload();
-        cout << endl << "Packet size (payload + header): " << p_receive.get_size(); 
+		// p_receive.read_payload();
+        // cout << endl << "Packet size (payload + header): " << p_receive.get_size(); 
         //TODO: Check if need this if statement because if payload is 0, still open empty file..?
+        cout << p_receive.get_size() << endl;
         if(numbytes > 0) {
 			ofstream file;
             string filepath = to_string(*num_connections) + ".file";
-            cout << "filepath: " << filepath << endl;
+            // cout << "filepath: " << filepath << endl;
 			file.open(filepath, ios::out | ios::binary | ios::app);
 			
-            cout << endl << "NUMBER OF BYTES TO BE WRITTEN: " << p_receive.get_size() << endl << endl;
+            // cout << endl << "NUMBER OF BYTES TO BE WRITTEN: " << p_receive.get_size() << endl << endl;
 			file.write((char*)p_receive.get_payload(), p_receive.get_size() - HEADER_SIZE);
 			file.close();
             /* string folder = path;
@@ -95,15 +98,18 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
             write_to_file(*num_connections, filepath, p_receive.get_buffer(), p_receive.get_size() - HEADER_SIZE); */
         }
 
+
         unsigned int send_syn = p_receive.get_ack();                                            //syn = recieved ack
         unsigned int send_ack = p_receive.get_syn() + p_receive.get_size() - HEADER_SIZE;       //ack = syn + payload size
         Packet packet_to_send(send_syn, send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet(NULL);
-        cout << "test ack: " << endl;
-        packet_to_send.read_buffer();
+        cout << "Server to client ACK Number: " << send_ack << endl;
+        // packet_to_send.read_buffer();
 
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
     }
+
+    //CASE: 
 
     // //CASE: FIN FLAG ONLY, PART 1 OF TERMINATE
     // if(p.m_flags == F_FLAG) {

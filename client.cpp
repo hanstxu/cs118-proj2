@@ -103,7 +103,8 @@ int main(int argc, char* argv[]) {
 	
 	sendto(sockfd, three.get_buffer(), three.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
-	while (num_bytes > 0) {
+	//TODO: Check if this case is correct for < 512
+	while (num_bytes == 512) {
 		numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
 		if (numbytes < 0) {
 			cerr << "ERROR: recvfrom";
