@@ -35,7 +35,7 @@ void *get_in_addr(struct sockaddr *sa)
     o_file.close();
 } */
 
-void handle_packet(unsigned int* num_connections, string path, int sockfd, int* sequence_number) {
+void handle_packet(unsigned int* num_connections, string path, int sockfd, int* sequence_number, vector<unsigned int> &connection_seq_number) {
     socklen_t addr_len;
     struct sockaddr_storage their_addr;
     int numbytes;
@@ -53,95 +53,75 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         cerr << "ERROR: recvfrom";
         exit(5);   
     }
-    // cout << endl;
-    // printf("Printing received buffer: %s", (char*)buf);
-    // cout<< endl;
+
 
     //Extract info from packet and set syn, ack, cid, flags, and payload.
-
-    // cout << "Recieved " << numbytes << " bytes..." << endl;
     Packet p_receive(buf, numbytes-HEADER_SIZE);
 
     // //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE, REPLY WITH SYN-ACK
-    if(CHECK_BIT(p_receive.get_flags(), 1) && (p_receive.get_cid() == 0)) {
+    bool SYN_FLAG_ONLY = CHECK_BIT(p_receive.get_flags(), 1);
+    if(SYN_FLAG_ONLY && (p_receive.get_cid() == 0)) {
         cout << endl << "PART 1 OF HANDSHAKE:" << endl;
         (*num_connections)++;
 		unsigned int send_ack = p_receive.get_syn() + 1;
-
-        Packet packet_to_send(4321, send_ack, *num_connections, A_FLAG | S_FLAG, 0);
+        unsigned int initial_seq_num = 4321;
+        connection_seq_number.push_back(initial_seq_num);
+        Packet packet_to_send(connection_seq_number[*num_connections - 1], send_ack, *num_connections, A_FLAG | S_FLAG, 0);
         packet_to_send.set_packet(NULL);
-        cout << "Server to client ACK Number: " << send_ack << endl;
-
+        // cout << "Server to client ACK Number: " << send_ack << endl;
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
     }
 
     //CASE: ACK FLAG ONLY, RECEIVE FILE AND REPLY WITH ACK.
-    if(CHECK_BIT(p_receive.get_flags(), 2)) {
+    bool ACK_FLAG_ONLY = CHECK_BIT(p_receive.get_flags(), 2) && (!CHECK_BIT(p_receive.get_flags(), 1)) && (!CHECK_BIT(p_receive.get_flags(), 0));
+    if(ACK_FLAG_ONLY) {
         cout << endl << "RECEIVE FILE HERE..." << endl;
-		// p_receive.read_payload();
-        // cout << endl << "Packet size (payload + header): " << p_receive.get_size(); 
         //TODO: Check if need this if statement because if payload is 0, still open empty file..?
         cout << p_receive.get_size() << endl;
         if(numbytes > 0) {
 			ofstream file;
             string filepath = to_string(*num_connections) + ".file";
-            // cout << "filepath: " << filepath << endl;
 			file.open(filepath, ios::out | ios::binary | ios::app);
-			
-            // cout << endl << "NUMBER OF BYTES TO BE WRITTEN: " << p_receive.get_size() << endl << endl;
 			file.write((char*)p_receive.get_payload(), p_receive.get_size() - HEADER_SIZE);
 			file.close();
-            /* string folder = path;
-            string filepath = "./" + to_string(*num_connections) + ".file";
-            // string filepath = folder + "/" + to_string(*num_connections) + ".file";
-            write_to_file(*num_connections, filepath, p_receive.get_buffer(), p_receive.get_size() - HEADER_SIZE); */
         }
-
 
         unsigned int send_syn = p_receive.get_ack();                                            //syn = recieved ack
         unsigned int send_ack = p_receive.get_syn() + p_receive.get_size() - HEADER_SIZE;       //ack = syn + payload size
+        connection_seq_number[p_receive.get_cid() - 1] = send_syn;                              //payload size = 0 so add 0
         Packet packet_to_send(send_syn, send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet(NULL);
         cout << "Server to client ACK Number: " << send_ack << endl;
-        // packet_to_send.read_buffer();
-
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
     }
 
-    //CASE: 
+    //CASE: FIN FLAG ONLY, START TERMINATE
+    bool FIN_FLAG_ONLY = CHECK_BIT(p_receive.get_flags(), 0) && !CHECK_BIT(p_receive.get_flags(), 1) && !CHECK_BIT(p_receive.get_flags(), 2);
+    if(FIN_FLAG_ONLY) {
+        //Send ACK after receiving FIN
+        unsigned int send_syn = connection_seq_number[p_receive.get_cid() - 1];                              
+        unsigned int send_ack = p_receive.get_syn() + 1;     
+        Packet ack_packet_to_send(send_syn, send_ack, p_receive.get_cid(), A_FLAG, 0);
+        ack_packet_to_send.set_packet(NULL);
+        cout << "Server to client ACK Number: " << send_ack << endl;
+        sendto(sockfd, ack_packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
 
-    // //CASE: FIN FLAG ONLY, PART 1 OF TERMINATE
-    // if(p.m_flags == F_FLAG) {
-    //     //SEND ACK AFTER RECEIVING FIN
-    //     memset(&header, 0, sizeof(header));
-    //     unsigned int fin_sequence_number = 4322;
-    //     unsigned int fin_ack_number = p.m_syn+1;
-    //     convert_to_buffer(header, fin_sequence_number, fin_ack_number, p.m_cid, A_FLAG);
-    //     sendto(sockfd, header, BUFFER_SIZE-1, 0, (struct sockaddr *)&their_addr, addr_len);
+        //Send FIN right after sending ACK
+        //keep send_syn the same
+        send_ack = 0;   //send_ack = 0 because fin
+        Packet fin_packet_to_send(send_syn, send_ack, p_receive.get_cid(), F_FLAG, 0);
+        sendto(sockfd, fin_packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
 
-    //     //SEND FIN AND EXPECT ACK IN RETURN
-    //     memset(&header, 0, sizeof(header));
-    //     fin_sequence_number = 4322;             //currently hardcoded
-    //     fin_ack_number = 0;
-    //     convert_to_buffer(header, fin_sequence_number, fin_ack_number, p.m_cid, F_FLAG);
-    //     sendto(sockfd, header, BUFFER_SIZE-1, 0, (struct sockaddr *)&their_addr, addr_len);
-        
-    //     //EXPECTING ACK IN RETURN...
-    //     if ((numbytes = recvfrom(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
-    //         cerr << "ERROR: recvfrom";
-    //         exit(5);
-    //     }
+        //Expect ACK in return
+        if ((numbytes = recvfrom(sockfd, buf, BUFFER_SIZE , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
+            cerr << "ERROR: recvfrom";
+            exit(5);   
+        }
 
-    // }
+        //if ack is lost... try again.
 
-    // //write to file
-    // if(numbytes > 0) {
-    //     string folder = path;
-    //     string filepath = "./" + to_string(*num_connections) + ".file";
-    //     // string filepath = folder + "/" + to_string(*num_connections) + ".file";
-    //     write_to_file(*num_connections, filepath, buf, numbytes);
-    // }
+    }
 }
 
 void test_header_with_packets() {
@@ -167,6 +147,7 @@ int main(int argc, char *argv[])
     int rv;
     unsigned int num_connections = 0;
     int sequence_number = 4321;
+    vector<unsigned int> connection_seq_number;
 
     // test_header_with_packets();
 
@@ -227,7 +208,7 @@ int main(int argc, char *argv[])
     //At this point, handle the packet recieved
     while(1) {
         //hang at recvfrom() so the while loop is okay here..?
-        handle_packet(&num_connections, argv[2], sockfd, &sequence_number);
+        handle_packet(&num_connections, argv[2], sockfd, &sequence_number, connection_seq_number);
     }
     
     close(sockfd);
