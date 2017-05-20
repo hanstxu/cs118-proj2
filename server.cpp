@@ -58,6 +58,8 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     // unsigned int syn, ack;
     // unsigned short cid, flags;
 
+    bool print = true;
+
 
     //RECEIVE PACKET
     addr_len = sizeof(their_addr);
@@ -68,11 +70,12 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 
     //Extract info from packet and set syn, ack, cid, flags, and payload.
     Packet p_receive(buf, numbytes-HEADER_SIZE);
-    print_packet_received(p_receive.get_syn(), p_receive.get_ack(), p_receive.get_cid(), 0, 0, p_receive.get_flags());
+    if(print)
+        print_packet_received(p_receive.get_syn(), p_receive.get_ack(), p_receive.get_cid(), 0, 0, p_receive.get_flags());
 
 
     // //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE, REPLY WITH SYN-ACK
-    bool SYN_FLAG_ONLY = CHECK_BIT(p_receive.get_flags(), 1);
+    bool SYN_FLAG_ONLY = CHECK_BIT(p_receive.get_flags(), 1) && (!CHECK_BIT(p_receive.get_flags(), 2)) && (!CHECK_BIT(p_receive.get_flags(), 0));
     if(SYN_FLAG_ONLY && (p_receive.get_cid() == 0)) {
         (*num_connections)++;
 		unsigned int send_ack = p_receive.get_syn() + 1;
@@ -80,13 +83,14 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         connection_seq_number.push_back(initial_seq_num);
         Packet packet_to_send(connection_seq_number[*num_connections - 1], send_ack, *num_connections, A_FLAG | S_FLAG, 0);
         packet_to_send.set_packet(NULL);
-        // cout << "SYN Number: " << connection_seq_number[*num_connections - 1] << "\tACK Number: " << send_ack << "\tFlags: SYN-ACK" << endl;
+        cout << "Flags: " << packet_to_send.get_flags() << " CID: " << packet_to_send.get_cid();
+        // cout << "SYN Number: " << connection_seq_number[*num_connections - 1] << "\tACK Number: " << send_ack << "\tFlags: SYN-ACK" << "\tNum connections: " << *num_connections << endl;
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
     }
 
     //CASE: ACK FLAG ONLY, RECEIVE FILE AND REPLY WITH ACK.
-    bool ACK_FLAG_ONLY = CHECK_BIT(p_receive.get_flags(), 2) && (!CHECK_BIT(p_receive.get_flags(), 1)) && (!CHECK_BIT(p_receive.get_flags(), 0));
+    bool ACK_FLAG_ONLY = (!CHECK_BIT(p_receive.get_flags(), 1)) && (!CHECK_BIT(p_receive.get_flags(), 0));
     if(ACK_FLAG_ONLY) {
         //TODO: Check if need this if statement because if payload is 0, still open empty file..?
         if(numbytes > 0) {
@@ -97,10 +101,32 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 			file.close();
         }
 
-        unsigned int send_syn = p_receive.get_ack();                                            //syn = recieved ack
+        // unsigned int send_syn = p_receive.get_ack();                                            //syn = recieved ack
         unsigned int send_ack = p_receive.get_syn() + p_receive.get_size() - HEADER_SIZE;       //ack = syn + payload size
-        connection_seq_number[p_receive.get_cid() - 1] = send_syn;                              //payload size = 0 so add 0
-        Packet packet_to_send(send_syn, send_ack, p_receive.get_cid(), A_FLAG, 0);
+        // connection_seq_number[p_receive.get_cid() - 1] = send_syn;                              //payload size = 0 so add 0
+        Packet packet_to_send(connection_seq_number[p_receive.get_cid() - 1], send_ack, p_receive.get_cid(), A_FLAG, 0);
+        packet_to_send.set_packet(NULL);
+        // cout << "SYN Number: " << send_syn << "\tACK Number: " << send_ack << "\tFlags: ACK" << endl;
+        sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
+    }
+
+
+    //CASE: ACK FLAG ONLY, RECEIVE FILE AND REPLY WITH ACK.
+    bool ACK_FLAG_ONLY = (!CHECK_BIT(p_receive.get_flags(), 1)) && (!CHECK_BIT(p_receive.get_flags(), 0));
+    if(ACK_FLAG_ONLY) {
+        //TODO: Check if need this if statement because if payload is 0, still open empty file..?
+        if(numbytes > 0) {
+			ofstream file;
+            string filepath = path + "/" + to_string(p_receive.get_cid()) + ".file";
+			file.open(filepath, ios::out | ios::binary | ios::app);
+			file.write((char*)p_receive.get_payload(), p_receive.get_size() - HEADER_SIZE);
+			file.close();
+        }
+
+        // unsigned int send_syn = p_receive.get_ack();                                            //syn = recieved ack
+        unsigned int send_ack = p_receive.get_syn() + p_receive.get_size() - HEADER_SIZE;       //ack = syn + payload size
+        // connection_seq_number[p_receive.get_cid() - 1] = send_syn;                              //payload size = 0 so add 0
+        Packet packet_to_send(connection_seq_number[p_receive.get_cid() - 1], send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet(NULL);
         // cout << "SYN Number: " << send_syn << "\tACK Number: " << send_ack << "\tFlags: ACK" << endl;
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
@@ -132,7 +158,8 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         }
 
         Packet rec(buf, numbytes - HEADER_SIZE);
-        print_packet_received(rec.get_syn(), rec.get_ack(), rec.get_cid(), 0, 0, rec.get_flags());
+        if(print)
+            print_packet_received(rec.get_syn(), rec.get_ack(), rec.get_cid(), 0, 0, rec.get_flags());
 
 
         //if ack is lost... try again.
