@@ -98,7 +98,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         Packet packet_to_send(connection_seq_number[*num_connections - 1], send_ack, *num_connections, A_FLAG | S_FLAG, 0);
         packet_to_send.set_packet(NULL);
         if(print)
-            print_packet_send(initial_seq_num, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG | S_FLAG);
+            print_packet_send(initial_seq_num, send_ack, *num_connections, 512, 10000, A_FLAG | S_FLAG);
 
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
@@ -127,7 +127,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
     }
     
-
+    //RECEIVE SOME PAYLOAD HERE (no flags, so after the handshake...)
     else if(NO_FLAGS) {
         //TODO: Check if need this if statement because if payload is 0, still open empty file..?
         if(numbytes > 0) {
@@ -138,7 +138,6 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 			file.close();
         }
 
-        //todo: without an ack, we need to use our vector instead of just get_ack()
         unsigned int send_seq = connection_seq_number[p_receive.get_cid() - 1];                                       //seq = recieved ack
         unsigned int send_ack = p_receive.get_seq() + p_receive.get_size() - HEADER_SIZE;       //ack = seq + payload size
         Packet packet_to_send(send_seq, send_ack, p_receive.get_cid(), A_FLAG, 0);
