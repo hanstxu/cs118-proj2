@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
 	
 	Packet two(buffer, numbytes-HEADER_SIZE);
 
-    print_packet_received(two.get_seq(), two.get_ack(), two.get_cid(), 0, 0, two.get_flags());
+    print_packet_received(two.get_seq(), two.get_ack(), two.get_cid(), 512, 10000, two.get_flags());
 	
 	FILE* filp = fopen(argv[3], "rb");
 	if (!filp) {
@@ -124,7 +124,7 @@ int main(int argc, char* argv[]) {
 		}
 		
 		Packet receive_packet(buffer, numbytes-HEADER_SIZE);
-	    print_packet_received(receive_packet.get_seq(), receive_packet.get_ack(), receive_packet.get_cid(), 0, 0, receive_packet.get_flags());
+	    print_packet_received(receive_packet.get_seq(), receive_packet.get_ack(), receive_packet.get_cid(), 512, 10000, receive_packet.get_flags());
 		
 		num_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 		
@@ -162,7 +162,7 @@ int main(int argc, char* argv[]) {
 	unsigned int final_seq = receive_ack.get_seq() + 1;
 	unsigned int final_ack = receive_ack.get_ack();
 
-	print_packet_received(receive_ack.get_seq(), receive_ack.get_ack(), receive_ack.get_cid(), 0, 0, receive_ack.get_flags());
+	print_packet_received(receive_ack.get_seq(), receive_ack.get_ack(), receive_ack.get_cid(), 512, 10000, receive_ack.get_flags());
 
 	Packet final_packet(final_ack, final_seq, receive_last_ack.get_cid(), A_FLAG, 0);	
 	final_packet.set_packet(NULL);
