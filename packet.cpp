@@ -2,10 +2,10 @@
 
 //Send packet declaration. Take in syn, ack, cid, flags, payload size and set the m_header accordingly.
 
-Packet::Packet(uint32_t syn, uint32_t ack, uint16_t cid, uint16_t flags,
+Packet::Packet(uint32_t seq, uint32_t ack, uint16_t cid, uint16_t flags,
 	unsigned int payload_size) {
-	m_syn = 0, m_ack = 0, m_cid = 0, m_flags = 0;
-	convert_to_buffer(m_header, syn, ack, cid, flags);
+	m_seq = 0, m_ack = 0, m_cid = 0, m_flags = 0;
+	convert_to_buffer(m_header, seq, ack, cid, flags);
 	m_payload_size = payload_size;
 	m_payload = new unsigned char[payload_size];
 	m_packet = new unsigned char[payload_size + HEADER_SIZE];
@@ -14,7 +14,7 @@ Packet::Packet(uint32_t syn, uint32_t ack, uint16_t cid, uint16_t flags,
 //Receive packet declaration. Take in buffer and set the m_syn, m_ack, m_cid, m_flags accordingly.
 Packet::Packet(unsigned char* buffer, unsigned int payload_size) {
 	memset(m_header, 0, HEADER_SIZE);
-	get_header_info(buffer, m_syn, m_ack, m_cid, m_flags);
+	get_header_info(buffer, m_seq, m_ack, m_cid, m_flags);
 	m_payload_size = payload_size;
 	m_payload = new unsigned char[payload_size];
 	memcpy(m_payload, &buffer[12], m_payload_size);
@@ -44,7 +44,7 @@ void Packet::read_buffer() const {
 }
 
 void Packet::read_header() const {
-	cout << "Sequence Number: " << m_syn << endl;
+	cout << "Sequence Number: " << m_seq << endl;
 	cout << "Acknowledgement Number: " << m_ack << endl;
 	cout << "Connection ID: " << m_cid << endl;
 	cout << "Flags: ";
@@ -69,8 +69,8 @@ unsigned char* Packet::get_payload() const {
 	return m_payload;
 }
 
-unsigned int Packet::get_syn() const {
-	return m_syn;
+unsigned int Packet::get_seq() const {
+	return m_seq;
 }
 
 unsigned int Packet::get_ack() const {
