@@ -14,10 +14,14 @@ using namespace std;
 
 class Packet {
 public:
+	Packet();
+	
 	Packet(uint32_t seq, uint32_t ack, uint16_t cid, uint16_t flags,
 	unsigned int payload_size);
 	
 	Packet(unsigned char* buffer, unsigned int payload_size);
+	
+	Packet &operator=(const Packet& other);
 	
 	~Packet();
 	
