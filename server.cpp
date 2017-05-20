@@ -91,7 +91,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         //TODO: Check if need this if statement because if payload is 0, still open empty file..?
         if(numbytes > 0) {
 			ofstream file;
-            string filepath = to_string(*num_connections) + ".file";
+            string filepath = path + "/" + to_string(p_receive.get_cid()) + ".file";
 			file.open(filepath, ios::out | ios::binary | ios::app);
 			file.write((char*)p_receive.get_payload(), p_receive.get_size() - HEADER_SIZE);
 			file.close();
