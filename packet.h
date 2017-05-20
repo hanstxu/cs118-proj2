@@ -14,8 +14,8 @@ using namespace std;
 
 class Packet {
 public:
-	Packet(unsigned int syn, unsigned int ack, unsigned short cid,
-	unsigned short flags, unsigned int payload_size);
+	Packet(uint32_t syn, uint32_t ack, uint16_t cid, uint16_t flags,
+	unsigned int payload_size);
 	
 	Packet(unsigned char* buffer, unsigned int payload_size);
 	
@@ -38,8 +38,8 @@ public:
 	unsigned int get_size() const;
 private:
 	unsigned char m_header[HEADER_SIZE];
-	unsigned int m_syn, m_ack;
-	unsigned short m_cid, m_flags;
+	uint32_t m_syn, m_ack;
+	uint16_t m_cid, m_flags;
 	unsigned int m_payload_size;
 	unsigned char* m_payload;
 	unsigned char* m_packet;
