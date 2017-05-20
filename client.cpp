@@ -82,10 +82,8 @@ int main(int argc, char* argv[]) {
 
 	cout << "Initiate Handshake..." << endl;
 	
-	//initiate_handshake(payload, argv[1], argv[2], argv[1], argv[2]);
 	Packet one(CLIENT_START, 0, 0, S_FLAG, 0);
 	one.set_packet(NULL);
-    // cout << "SEQ Number: " << CLIENT_START << "\tACK Number:    0" << "\tFlags: SYN" << endl;        
 
 	sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
@@ -99,11 +97,8 @@ int main(int argc, char* argv[]) {
 	}
 	
 	Packet two(buffer, numbytes-HEADER_SIZE);
-	// two.read_header();
 
     print_packet_received(two.get_seq(), two.get_ack(), two.get_cid(), 0, 0, two.get_flags());
-
-
 	
 	FILE* filp = fopen(argv[3], "rb");
 	if (!filp) {
@@ -118,7 +113,6 @@ int main(int argc, char* argv[]) {
 	Packet three(two.get_ack(), two.get_seq() + 1, two.get_cid(), A_FLAG, num_bytes);
 	three.set_packet(read_buffer);
 	
-	// cout << "SEQ Number: " << two.get_ack() << "\tACK Number: " << two.get_seq() + 1 << "\tFlags: ACK" << endl;        
 	sendto(sockfd, three.get_buffer(), three.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
 	//TODO: Check if this case is correct for < 512
@@ -132,13 +126,11 @@ int main(int argc, char* argv[]) {
 		Packet receive_packet(buffer, numbytes-HEADER_SIZE);
 	    print_packet_received(receive_packet.get_seq(), receive_packet.get_ack(), receive_packet.get_cid(), 0, 0, receive_packet.get_flags());
 		
-
 		num_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 		
 		Packet file_packet(receive_packet.get_ack(), receive_packet.get_seq(), receive_packet.get_cid(), A_FLAG, num_bytes);
 		file_packet.set_packet(read_buffer);
 
-	    // cout << "SEQ" Number: " << receive_packet.get_ack() << "\tACK Number: " << receive_packet.get_seq() << "\tFlags: ACK" << endl;        
 		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	}
 
@@ -174,7 +166,7 @@ int main(int argc, char* argv[]) {
 
 	Packet final_packet(final_ack, final_seq, receive_last_ack.get_cid(), A_FLAG, 0);	
 	final_packet.set_packet(NULL);
-	// cout << "SEQ Number: " << final_ack << "\tACK Number: " << final_seq << "\tFlags: ACK" << endl; 
+	
 	sendto(sockfd, final_packet.get_buffer(), final_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
 	delete read_buffer;
