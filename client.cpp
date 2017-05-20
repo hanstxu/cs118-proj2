@@ -72,7 +72,8 @@ int main(int argc, char* argv[]) {
 	//initiate_handshake(payload, argv[1], argv[2], argv[1], argv[2]);
 	Packet one(CLIENT_START, 0, 0, S_FLAG, 0);
 	one.set_packet(NULL);
-	
+    cout << "SYN Number: " << CLIENT_START << "\tACK Number:    0" << "\tFlags: SYN" << endl;        
+
 	sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
 	int numbytes;
@@ -85,7 +86,7 @@ int main(int argc, char* argv[]) {
 	}
 	
 	Packet two(buffer, numbytes-HEADER_SIZE);
-	two.read_header();
+	// two.read_header();
 	
 	FILE* filp = fopen(argv[3], "rb");
 	if (!filp) {
@@ -97,10 +98,10 @@ int main(int argc, char* argv[]) {
 	
 	int num_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	
-	cout << "CLIENT: numbytes: " << num_bytes << endl;
 	Packet three(two.get_ack(), two.get_syn() + 1, two.get_cid(), A_FLAG, num_bytes);
 	three.set_packet(read_buffer);
 	
+	cout << "SYN Number: " << two.get_ack() << "\tACK Number: " << two.get_syn() + 1 << "\tFlags: ACK" << endl;        
 	sendto(sockfd, three.get_buffer(), three.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
 	//TODO: Check if this case is correct for < 512
@@ -115,12 +116,52 @@ int main(int argc, char* argv[]) {
 		
 		num_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 		
-		Packet file_packet(receive_packet.get_ack(), receive_packet.get_syn() + 1, receive_packet.get_cid(), A_FLAG, num_bytes);
+		Packet file_packet(receive_packet.get_ack(), receive_packet.get_syn(), receive_packet.get_cid(), A_FLAG, num_bytes);
 		file_packet.set_packet(read_buffer);
 
-	
+	    cout << "SYN Number: " << receive_packet.get_ack() << "\tACK Number: " << receive_packet.get_syn() << "\tFlags: ACK" << endl;        
 		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	}
+
+	//Finished sending entire file, receive the last ACK from the server...
+	numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
+	if (numbytes < 0) {
+		cerr << "ERROR: recvfrom";
+		exit(EXIT_FAILURE);
+	}
+	Packet receive_last_ack(buffer, num_bytes-HEADER_SIZE);
+
+
+	//Send FIN to server when done.
+	Packet send_fin_packet(receive_last_ack.get_ack(), 0, receive_last_ack.get_cid(), F_FLAG, 0);
+	send_fin_packet.set_packet(NULL);
+	
+	cout << "SYN Number: " << receive_last_ack.get_ack() << "\tACK Number:    0" << "\tFlags: FIN" << endl; 
+	sendto(sockfd, send_fin_packet.get_buffer(), send_fin_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
+
+
+	//Expect an ACK after sending FIN
+	numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
+	if (numbytes < 0) {
+		cerr << "ERROR: recvfrom";
+		exit(EXIT_FAILURE);
+	}
+	Packet receive_fin(buffer, num_bytes-HEADER_SIZE);
+	unsigned int final_syn = receive_fin.get_syn() + 1;
+	unsigned int final_ack = receive_fin.get_ack();
+
+	//Expect an FIN right after, respond with ACK
+	numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
+	if (numbytes < 0) {
+		cerr << "ERROR: recvfrom";
+		exit(EXIT_FAILURE);
+	}
+	// receive_packet = new Packet(buffer, num_bytes-HEADER_SIZE);
+
+	Packet final_packet(final_ack, final_syn, receive_last_ack.get_cid(), A_FLAG, 0);	
+	final_packet.set_packet(NULL);
+	cout << "SYN Number: " << final_ack << "\tACK Number: " << final_syn << "\tFlags: ACK" << endl; 
+	sendto(sockfd, final_packet.get_buffer(), final_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
 	delete read_buffer;
 	close(sockfd);
