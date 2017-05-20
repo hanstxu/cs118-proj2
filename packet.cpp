@@ -14,11 +14,11 @@ Packet::Packet(unsigned int syn, unsigned int ack, unsigned short cid,
 //Receive packet declaration. Take in buffer and set the m_syn, m_ack, m_cid, m_flags accordingly.
 Packet::Packet(unsigned char* buffer, unsigned int payload_size) {
 	memset(m_header, 0, HEADER_SIZE);
-	for (int i = 0; i < 12; i++)
-		printf("%x ", (unsigned char)buffer[i]);
-	cout << endl;
+	// for (int i = 0; i < 12; i++)
+	// 	printf("%x ", (unsigned char)buffer[i]);
+	// cout << endl;
 	get_header_info(buffer, m_syn, m_ack, m_cid, m_flags);
-	cout << m_syn << endl;
+	// cout << m_syn << endl;
 	m_payload_size = payload_size;
 	m_payload = new unsigned char[payload_size];
 	memcpy(m_payload, &buffer[12], m_payload_size);

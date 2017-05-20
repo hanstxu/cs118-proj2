@@ -66,6 +66,8 @@ int main(int argc, char* argv[]) {
 		freeaddrinfo(servinfo);
 		exit(EXIT_FAILURE);
 	}
+
+	cout << "Initiate Handshake..." << endl;
 	
 	//initiate_handshake(payload, argv[1], argv[2], argv[1], argv[2]);
 	Packet one(CLIENT_START, 0, 0, S_FLAG, 0);
@@ -95,10 +97,9 @@ int main(int argc, char* argv[]) {
 	
 	int num_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	
+	cout << "CLIENT: numbytes: " << num_bytes << endl;
 	Packet three(two.get_ack(), two.get_syn() + 1, two.get_cid(), A_FLAG, num_bytes);
 	three.set_packet(read_buffer);
-	
-	printf("%s", read_buffer);
 	
 	sendto(sockfd, three.get_buffer(), three.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
@@ -115,6 +116,7 @@ int main(int argc, char* argv[]) {
 		
 		Packet file_packet(receive_packet.get_ack(), receive_packet.get_syn() + 1, receive_packet.get_cid(), A_FLAG, num_bytes);
 		file_packet.set_packet(read_buffer);
+
 	
 		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	}

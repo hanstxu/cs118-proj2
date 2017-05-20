@@ -16,7 +16,7 @@
 using namespace std;
 
 #define SERVER_INITIAL_SEQUENCE_NUMBER 4321
-#define BUFFER_SIZE 512
+#define BUFFER_SIZE 524
 
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -45,21 +45,27 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     // unsigned int syn, ack;
     // unsigned short cid, flags;
 
+    uint32_t val = 0;
+
     //RECEIVE PACKET
     addr_len = sizeof(their_addr);
-    if ((numbytes = recvfrom(sockfd, buf, BUFFER_SIZE-1 , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
+    if ((numbytes = recvfrom(sockfd, buf, BUFFER_SIZE , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
         cerr << "ERROR: recvfrom";
         exit(5);   
     }
+    // cout << endl;
+    // printf("Printing received buffer: %s", (char*)buf);
+    // cout<< endl;
 
     //Extract info from packet and set syn, ack, cid, flags, and payload.
+
+    cout << "Recieved " << numbytes << " bytes..." << endl;
     Packet p_receive(buf, numbytes-HEADER_SIZE);
 
-	p_receive.read_header();
-    //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE, REPLY WITH SYN-ACK
-    if(CHECK_BIT(p_receive.get_flags(), 1) && (*num_connections == 0)) {
+    // //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE, REPLY WITH SYN-ACK
+    if(CHECK_BIT(p_receive.get_flags(), 1) && (p_receive.get_cid() == 0)) {
+        cout << endl << "PART 1 OF HANDSHAKE:" << endl;
         (*num_connections)++;
-		
 		unsigned int new_syn = p_receive.get_syn() + 1;
 
         Packet packet_to_send(4321, new_syn, *num_connections, A_FLAG | S_FLAG, 0);
@@ -68,15 +74,19 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         return;
     }
 
-    //CASE: ACK FLAG ONLY, RECEIVE FILE AND REPLY WITH ACK.     
+    //CASE: ACK FLAG ONLY, RECEIVE FILE AND REPLY WITH ACK.
     if(CHECK_BIT(p_receive.get_flags(), 2)) {
-
+        cout << endl << "RECEIVE FILE HERE..." << endl;
 		p_receive.read_payload();
+        cout << endl << "Packet size (payload + header): " << p_receive.get_size(); 
+        //TODO: Check if need this if statement because if payload is 0, still open empty file..?
         if(numbytes > 0) {
-			
 			ofstream file;
-			file.open("1.file", ios::out | ios::binary | ios::app);
+            string filepath = to_string(*num_connections) + ".file";
+            cout << "filepath: " << filepath << endl;
+			file.open(filepath, ios::out | ios::binary | ios::app);
 			
+            cout << endl << "NUMBER OF BYTES TO BE WRITTEN: " << p_receive.get_size() << endl << endl;
 			file.write((char*)p_receive.get_payload(), p_receive.get_size() - HEADER_SIZE);
 			file.close();
             /* string folder = path;
@@ -89,8 +99,8 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         unsigned int send_ack = p_receive.get_syn() + p_receive.get_size() - HEADER_SIZE;       //ack = syn + payload size
         Packet packet_to_send(send_syn, send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet(NULL);
-        cout << "test ack: ";
-        packet_to_send.read_header();
+        cout << "test ack: " << endl;
+        packet_to_send.read_buffer();
 
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
     }
@@ -152,7 +162,7 @@ int main(int argc, char *argv[])
     unsigned int num_connections = 0;
     int sequence_number = 4321;
 
-    test_header_with_packets();
+    // test_header_with_packets();
 
     //Handle basic command line argument inputs
     //server <PORT> <FILE-DIR>
