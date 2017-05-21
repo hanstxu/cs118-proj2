@@ -11,50 +11,17 @@
 #include <stdio.h>	// for printf
 
 #include "packet.h"
+#include "output.h"
 using namespace std;
 
 #define CLIENT_START 12345
-
-void print_packet_received(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cwnd, uint32_t ss_thresh, uint16_t flags) {
-	bool print_recv = true;
-	if(!print_recv)
-		return;
-    cout << "RECV " << seq << " " << ack << " " << cid << " " << cwnd << " " << ss_thresh;
-    if(CHECK_BIT(flags, 2))
-        cout << " ACK";
-
-    if(CHECK_BIT(flags, 1))
-        cout << " SYN";
-    
-    if(CHECK_BIT(flags, 0))
-        cout << " FIN";
-    cout << endl;
-}
-
-void print_packet_send(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cwnd, uint32_t ss_thresh, uint16_t flags) {
-	bool print_recv = true;
-	if(!print_recv)
-		return;
-
-    cout << "SEND " << seq << " " << ack << " " << cid << " " << cwnd << " " << ss_thresh;
-    if(CHECK_BIT(flags, 2))
-        cout << " ACK";
-
-    if(CHECK_BIT(flags, 1))
-        cout << " SYN";
-    
-    if(CHECK_BIT(flags, 0))
-        cout << " FIN";
-    //cout << " DUP"
-    cout << endl;
-}
 
 Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
  uint16_t& cid, uint32_t cwnd, uint32_t ss_thresh) {
 	Packet one(seq_num, 0, 0, S_FLAG, 0);
 	one.set_packet(NULL);
 
-	print_packet_send(seq_num, 0, 0, cwnd, ss_thresh, 0);
+	print_packet_send(seq_num, 0, 0, cwnd, ss_thresh, S_FLAG);
 	sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr,
 	 servinfo->ai_addrlen);
 	
@@ -80,7 +47,7 @@ Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
 	seq_num += 1;
 	cid = receive_packet.get_cid();
 	
-	print_packet_received(receive_packet.get_seq(), receive_packet.get_ack(),
+	print_packet_recv(receive_packet.get_seq(), receive_packet.get_ack(),
 	 receive_packet.get_cid(), cwnd, ss_thresh, receive_packet.get_flags());
 	
 	return receive_packet;
@@ -153,7 +120,8 @@ int main(int argc, char* argv[]) {
 		Packet file_packet(recv_packet.get_ack(), recv_packet.get_seq(), cid, A_FLAG, file_bytes);
 		file_packet.set_packet(read_buffer);
 
-		print_packet_send(recv_packet.get_ack(), recv_packet.get_seq(), cid, 512, 10000, A_FLAG);
+		print_packet_send(recv_packet.get_ack(), recv_packet.get_seq(),
+		 recv_packet.get_cid(), 512, 10000, A_FLAG);
 		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 		
 		// check to make sure the acknowledgement packet from server has the
@@ -168,7 +136,7 @@ int main(int argc, char* argv[]) {
 			recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
 		}while(recv_packet.get_cid() != cid);
 		
-		print_packet_received(recv_packet.get_seq(), recv_packet.get_ack(),
+		print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
 		 cid, 0, 0, recv_packet.get_flags());
 		
 		file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
@@ -197,7 +165,8 @@ int main(int argc, char* argv[]) {
 	unsigned int final_seq = recv_packet.get_seq() + 1;
 	unsigned int final_ack = recv_packet.get_ack();
 
-	print_packet_received(recv_packet.get_seq(), recv_packet.get_ack(), cid, 512, 10000, recv_packet.get_flags());
+	print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
+	 recv_packet.get_cid(), 512, 10000, recv_packet.get_flags());
 
 	Packet final_packet(final_ack, final_seq, cid, A_FLAG, 0);	
 	final_packet.set_packet(NULL);
