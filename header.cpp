@@ -2,7 +2,7 @@
 
 void convert_to_buffer(unsigned char* buffer, uint32_t seq, uint32_t ack,
 	uint16_t cid, uint16_t flags) {
-	uint32_t nbo_seq = seq %(102400 + 1);
+	uint32_t nbo_seq = seq %(MAX_SEQ_NUM + 1);
 	nbo_seq = htonl(seq);
 	uint32_t nbo_ack = htonl(ack);
 	uint16_t nbo_cid = htons(cid);
@@ -28,7 +28,7 @@ void get_header_info(unsigned char* buffer, uint32_t& seq, uint32_t& ack,
 	memcpy(&nbo_flags, &buffer[10], sizeof(short));
 	
 	seq = ntohl(nbo_seq);
-	seq = seq %(102400 + 1);
+	seq = seq %(MAX_SEQ_NUM + 1);
 	ack = ntohl(nbo_ack);
 	cid = ntohs(nbo_cid);
 	flags = ntohs(nbo_flags);

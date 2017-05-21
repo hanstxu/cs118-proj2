@@ -195,7 +195,7 @@ int main(int argc, char* argv[]) {
 		 cid, 0, 0, recv_packet.get_flags());
 		
 		// update seq_num and set zero_ack/zero_flag to zero if not equal to 0
-		seq_num += file_bytes;
+		seq_num = (seq_num + file_bytes) % (MAX_SEQ_NUM + 1);
 		if (zero_ack != 0)
 			zero_ack = 0;
 		if (zero_flag != 0)
@@ -252,7 +252,7 @@ int main(int argc, char* argv[]) {
 	 recv_packet.get_cid(), 512, 10000, recv_packet.get_flags());
 	 
 	// Update sequence number to note that FIN has already been sent
-	seq_num += 1;
+	seq_num = (seq_num + 1) % (MAX_SEQ_NUM + 1);
 	ack_num += 1;
 	
 	if (CHECK_BIT(recv_packet.get_flags(), 0)) {

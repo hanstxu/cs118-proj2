@@ -5,6 +5,8 @@
 #define A_FLAG 0x4
 #define S_FLAG 0x2
 #define F_FLAG 0x1
+#define MAX_SEQ_NUM 102400
+#define MAX_CWND 51200
 
 #include <cstring>
 #include <arpa/inet.h>
