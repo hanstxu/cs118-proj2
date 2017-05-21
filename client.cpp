@@ -146,7 +146,7 @@ int main(int argc, char* argv[]) {
 	
 	int recv_bytes;
 	unsigned char buffer[PACKET_SIZE];
-	unsigned char* read_buffer = new unsigned char[PAYLOAD_SIZE];
+	unsigned char read_buffer[PAYLOAD_SIZE];
 	int file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	
 	while (file_bytes > 0) {
@@ -206,7 +206,6 @@ int main(int argc, char* argv[]) {
 	sendto(sockfd, final_packet.get_buffer(), final_packet.get_size(), 0,
 	 servinfo->ai_addr, servinfo->ai_addrlen);
 	
-	delete read_buffer;
 	close(sockfd);
 	freeaddrinfo(servinfo);
 	return 0;
