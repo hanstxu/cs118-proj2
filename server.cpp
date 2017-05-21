@@ -34,6 +34,10 @@ void *get_in_addr(struct sockaddr *sa)
 
 
 void print_packet_recv(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cwnd, uint32_t ss_thresh, uint16_t flags) {
+    bool print_recv = true;
+	if(!print_recv)
+		return;
+    
     cout << "RECV " << seq << " " << ack << " " << cid << " " << cwnd << " " << ss_thresh;
     if(CHECK_BIT(flags, 2))
         cout << " ACK";
@@ -47,6 +51,10 @@ void print_packet_recv(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cwnd, 
 }
 
 void print_packet_send(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cwnd, uint32_t ss_thresh, uint16_t flags) {
+    bool print_recv = true;
+	if(!print_recv)
+		return;
+    
     cout << "SEND " << seq << " " << ack << " " << cid << " " << cwnd << " " << ss_thresh;
     if(CHECK_BIT(flags, 2))
         cout << " ACK";
@@ -70,9 +78,6 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     // unsigned int seq, ack;
     // unsigned short cid, flags;
 
-    bool print = true;
-
-
     //RECEIVE PACKET
     addr_len = sizeof(their_addr);
     if ((numbytes = recvfrom(sockfd, buf, BUFFER_SIZE , 0, (struct sockaddr *)&their_addr, &addr_len)) == -1) {
@@ -82,8 +87,8 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 
     //Extract info from packet and set syn, ack, cid, flags, and payload.
     Packet p_receive(buf, numbytes-HEADER_SIZE);
-    if(print)
-        print_packet_recv(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), 0, 0, p_receive.get_flags());
+
+    print_packet_recv(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), 512, 10000, p_receive.get_flags());
 
 
     // //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE, REPLY WITH SYN-ACK
@@ -97,8 +102,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         connection.push_back(new_connection);
         Packet packet_to_send(initial_seq_num, send_ack, *num_connections, A_FLAG | S_FLAG, 0);
         packet_to_send.set_packet(NULL);
-        if(print)
-            print_packet_send(initial_seq_num, send_ack, *num_connections, 512, 10000, A_FLAG | S_FLAG);
+        print_packet_send(initial_seq_num, send_ack, *num_connections, 512, 10000, A_FLAG | S_FLAG);
 
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
@@ -124,8 +128,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         connection[this_cid].ack = send_ack;                                    //Server expects this number from client's SYN. 
         Packet packet_to_send(connection[this_cid].seq, send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet(NULL);
-        if(print)
-            print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG);
+        print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG);
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
     }
     
@@ -154,8 +157,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         Packet packet_to_send(send_seq, send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet(NULL);
         // cout << "SEQ Number: " << send_seq << "\tACK Number: " << send_ack << "\tFlags: ACK" << endl;
-        if(print)
-            print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG);
+        print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG);
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
     }
 
@@ -168,8 +170,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         Packet ack_packet_to_send(send_seq, send_ack, p_receive.get_cid(), A_FLAG | F_FLAG, 0);
         ack_packet_to_send.set_packet(NULL);
         // cout << "SEQ Number: " << send_seq << "\tACK Number: " << send_ack << "\tFlags: ACK" << endl;
-        if(print)
-            print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG | F_FLAG);
+        print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG | F_FLAG);
         sendto(sockfd, ack_packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
 
         //Expect ACK in return
@@ -179,8 +180,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         }
 
         Packet rec(buf, numbytes - HEADER_SIZE);
-        if(print)
-            print_packet_recv(rec.get_seq(), rec.get_ack(), rec.get_cid(), 0, 0, rec.get_flags());
+        print_packet_recv(rec.get_seq(), rec.get_ack(), rec.get_cid(), 512, 10000, rec.get_flags());
 
 
 

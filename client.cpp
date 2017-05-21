@@ -16,6 +16,9 @@ using namespace std;
 #define CLIENT_START 12345
 
 void print_packet_received(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cwnd, uint32_t ss_thresh, uint16_t flags) {
+	bool print_recv = true;
+	if(!print_recv)
+		return;
     cout << "RECV " << seq << " " << ack << " " << cid << " " << cwnd << " " << ss_thresh;
     if(CHECK_BIT(flags, 2))
         cout << " ACK";
@@ -27,6 +30,25 @@ void print_packet_received(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cw
         cout << " FIN";
     cout << endl;
 }
+
+void print_packet_send(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cwnd, uint32_t ss_thresh, uint16_t flags) {
+	bool print_recv = true;
+	if(!print_recv)
+		return;
+
+    cout << "SEND " << seq << " " << ack << " " << cid << " " << cwnd << " " << ss_thresh;
+    if(CHECK_BIT(flags, 2))
+        cout << " ACK";
+
+    if(CHECK_BIT(flags, 1))
+        cout << " SYN";
+    
+    if(CHECK_BIT(flags, 0))
+        cout << " FIN";
+    //cout << " DUP"
+    cout << endl;
+}
+
 
 int main(int argc, char* argv[]) {
 	if (argc != 4) {
@@ -76,6 +98,7 @@ int main(int argc, char* argv[]) {
 	Packet one(CLIENT_START, 0, 0, S_FLAG, 0);
 	one.set_packet(NULL);
 
+	print_packet_send(CLIENT_START, 0, 0, 512, 10000, 0);
 	sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
 	int numbytes;
@@ -106,6 +129,7 @@ int main(int argc, char* argv[]) {
 		Packet file_packet(receive_packet.get_ack(), receive_packet.get_seq(), receive_packet.get_cid(), A_FLAG, num_bytes);
 		file_packet.set_packet(read_buffer);
 
+		print_packet_send(receive_packet.get_ack(), receive_packet.get_seq(), receive_packet.get_cid(), 512, 10000, A_FLAG);
 		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 		
 		numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
@@ -125,6 +149,7 @@ int main(int argc, char* argv[]) {
 	Packet send_fin_packet(receive_packet.get_ack(), 0, receive_packet.get_cid(), F_FLAG, 0);
 	send_fin_packet.set_packet(NULL);
 	
+	print_packet_send(receive_packet.get_ack(), 0, receive_packet.get_cid(), 512, 10000, F_FLAG);
 	sendto(sockfd, send_fin_packet.get_buffer(), send_fin_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 
 	//Expect an FIN-ACK after sending FIN
@@ -143,6 +168,7 @@ int main(int argc, char* argv[]) {
 	Packet final_packet(final_ack, final_seq, receive_packet.get_cid(), A_FLAG, 0);	
 	final_packet.set_packet(NULL);
 	
+	print_packet_send(final_ack, final_seq, receive_packet.get_cid(), 512, 10000, A_FLAG);	
 	sendto(sockfd, final_packet.get_buffer(), final_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
 	delete read_buffer;
