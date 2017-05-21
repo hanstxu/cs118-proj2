@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
 	Packet one(CLIENT_START, 0, 0, S_FLAG, 0);
 	one.set_packet(NULL);
 
-	print_packet_send(CLIENT_START, 0, 0, 512, 10000, 0);
+	print_packet_send(CLIENT_START, 0, 0, 512, 10000, S_FLAG);
 	sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr, servinfo->ai_addrlen);
 	
 	int numbytes;
@@ -125,11 +125,20 @@ int main(int argc, char* argv[]) {
 	
 	int num_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	
+	bool handshake_send = true;
 	while (num_bytes > 0) {
-		Packet file_packet(receive_packet.get_ack(), receive_packet.get_seq(), receive_packet.get_cid(), A_FLAG, num_bytes);
+
+		unsigned int send_ack = 0;
+		unsigned int send_flag = 0;
+		if(handshake_send) {
+			send_ack = receive_packet.get_seq() + 1;
+			send_flag = A_FLAG;
+		}
+
+		Packet file_packet(receive_packet.get_ack(), send_ack, receive_packet.get_cid(), send_flag, num_bytes);
 		file_packet.set_packet(read_buffer);
 
-		print_packet_send(receive_packet.get_ack(), receive_packet.get_seq(), receive_packet.get_cid(), 512, 10000, A_FLAG);
+		print_packet_send(receive_packet.get_ack(), send_ack, receive_packet.get_cid(), 512, 10000, A_FLAG);
 		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 		
 		numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
@@ -143,6 +152,7 @@ int main(int argc, char* argv[]) {
 		receive_packet = recv;
 		
 		num_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
+		handshake_send = false;
 	}
 	
 	//Send FIN to server when done.

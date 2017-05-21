@@ -21,6 +21,7 @@ using namespace std;
 struct connection_vars {
     uint32_t seq;           //gonna be 4322 for the most part  
     uint32_t ack;           //this ack is the ack sent by server to client. expect this number as the client's next SYN
+    bool isValid;
 };
 
 
@@ -68,15 +69,29 @@ void print_packet_send(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cwnd, 
     cout << endl;
 }
 
+void print_packet_drop(uint32_t seq, uint32_t ack, uint16_t cid, uint16_t flags) {
+    bool print_recv = true;
+	if(!print_recv)
+		return;
+    
+    cout << "DROP " << seq << " " << ack << " " << cid;
+    if(CHECK_BIT(flags, 2))
+        cout << " ACK";
+
+    if(CHECK_BIT(flags, 1))
+        cout << " SYN";
+    
+    if(CHECK_BIT(flags, 0))
+        cout << " FIN";
+    //cout << " DUP"
+    cout << endl;
+}
+
 void handle_packet(unsigned int* num_connections, string path, int sockfd, int* sequence_number, vector<connection_vars> &connection) {
     socklen_t addr_len;
     struct sockaddr_storage their_addr;
     int numbytes;
-    // char s[INET6_ADDRSTRLEN];
     unsigned char buf[BUFFER_SIZE] = {0};
-    // unsigned char header[HEADER_SIZE] = {0};
-    // unsigned int seq, ack;
-    // unsigned short cid, flags;
 
     //RECEIVE PACKET
     addr_len = sizeof(their_addr);
@@ -91,14 +106,14 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     print_packet_recv(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), 512, 10000, p_receive.get_flags());
 
 
-    // //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE, REPLY WITH SYN-ACK
+    //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE, REPLY WITH SYN-ACK
     bool SYN_FLAG_ONLY = CHECK_BIT(p_receive.get_flags(), 1) && (!CHECK_BIT(p_receive.get_flags(), 2)) && (!CHECK_BIT(p_receive.get_flags(), 0));
     if(SYN_FLAG_ONLY && (p_receive.get_cid() == 0)) {
         (*num_connections)++;
 		unsigned int send_ack = p_receive.get_seq() + 1;
         unsigned int initial_seq_num = 4321;
         //declare struct with connection seq number and ack
-        connection_vars new_connection = { initial_seq_num, send_ack };
+        connection_vars new_connection = { initial_seq_num, send_ack, true };
         connection.push_back(new_connection);
         Packet packet_to_send(initial_seq_num, send_ack, *num_connections, A_FLAG | S_FLAG, 0);
         packet_to_send.set_packet(NULL);
@@ -108,7 +123,19 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         return;
     }
 
-    //CASE: ACK FLAG ONLY, RECEIVE FILE AND REPLY WITH ACK.
+    //ERROR: Drop because syn flag and connection id is NOT 0.
+    if(SYN_FLAG_ONLY && (p_receive.get_cid() == 0)) {
+        print_packet_drop(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), p_receive.get_flags()); 
+        return;        
+    }
+
+    //ERROR: Drop if access invalid connection
+    if(!connection[p_receive.get_cid() - 1].isValid) {
+        print_packet_drop(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), p_receive.get_flags()); 
+        return;
+    }
+
+    //CASE: ACK FLAG ONLY, RECEIVE FILE AND REPLY WITH ACK. This is technically part 2 of handshake
     bool ACK_FLAG_ONLY = CHECK_BIT(p_receive.get_flags(), 2) && (!CHECK_BIT(p_receive.get_flags(), 1)) && (!CHECK_BIT(p_receive.get_flags(), 0));
     bool NO_FLAGS = !CHECK_BIT(p_receive.get_flags(), 2) && (!CHECK_BIT(p_receive.get_flags(), 1)) && (!CHECK_BIT(p_receive.get_flags(), 0));
     if(ACK_FLAG_ONLY) {
@@ -130,6 +157,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         packet_to_send.set_packet(NULL);
         print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG);
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
+        return;
     }
     
     //RECEIVE SOME PAYLOAD HERE (no flags, so after the handshake...)
@@ -147,9 +175,11 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         unsigned int send_seq = connection[this_cid].seq;                                       //seq = recieved ack
         unsigned int send_ack = p_receive.get_seq() + p_receive.get_size() - HEADER_SIZE;       //ack = seq + payload size
 
-        // if(connection[this_cid].ack == p_receive.get_seq()) {
-        //     cout << "Good....." << endl;
-        // }
+        //Must be the correct sequence number. If not, drop.
+        if(connection[this_cid].ack != p_receive.get_seq()) {
+            print_packet_drop(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), p_receive.get_flags());
+            return;
+        }
 
         connection[this_cid].seq = send_seq;
         connection[this_cid].ack = send_ack;                                    //Server expects this number from client's SYN. 
@@ -157,8 +187,10 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         Packet packet_to_send(send_seq, send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet(NULL);
         // cout << "SEQ Number: " << send_seq << "\tACK Number: " << send_ack << "\tFlags: ACK" << endl;
+
         print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG);
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
+        return;
     }
 
     //CASE: FIN FLAG ONLY, START TERMINATE
@@ -181,8 +213,9 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 
         Packet rec(buf, numbytes - HEADER_SIZE);
         print_packet_recv(rec.get_seq(), rec.get_ack(), rec.get_cid(), 512, 10000, rec.get_flags());
-
-
+        
+        //at this point, connection should be closed...
+        connection[rec.get_cid() - 1].isValid = false;
 
         //if ack is lost... try again.
 
