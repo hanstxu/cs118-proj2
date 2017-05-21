@@ -130,13 +130,6 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         int this_cid = p_receive.get_cid() - 1;
         unsigned int send_seq = connection[this_cid].seq;                                       //seq = recieved ack
         unsigned int send_ack = p_receive.get_seq() + p_receive.get_size() - HEADER_SIZE;       //ack = seq + payload size
-        send_ack = send_ack % (102400 + 1);
-        //Receive a packet out of order (packet is too far ahead)
-        if(connection[this_cid].ack < p_receive.get_seq()) {
-            print_packet_drop(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), p_receive.get_flags());
-            return;
-        }
-
 
         unsigned int print_flag = A_FLAG;
         //send ack is less than max ack that has been sent... Packet is from the past...
@@ -148,6 +141,14 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         else {
             //update maxack
             connection[this_cid].max_ack = send_ack;
+        }
+        //module for printing purposes
+        send_ack = send_ack % (102400 + 1);
+
+        //Receive a packet out of order (packet is too far ahead)
+        if(connection[this_cid].ack < p_receive.get_seq()) {
+            print_packet_drop(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), p_receive.get_flags());
+            return;
         }
 
         connection[this_cid].seq = send_seq;
