@@ -22,13 +22,16 @@ using namespace std;
 // TODO: print drops
 
 Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
- uint32_t& ack_num, uint16_t& cid, uint32_t cwnd, uint32_t ss_thresh) {
+ uint32_t& ack_num, uint16_t& cid, uint32_t& cwnd, uint32_t ss_thresh) {
 	Packet one(seq_num, 0, 0, S_FLAG, 0);
 	one.set_packet(NULL);
 
 	print_packet_send(seq_num, 0, 0, cwnd, ss_thresh, S_FLAG);
 	sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr,
 	 servinfo->ai_addrlen);
+	
+	// update seq_num
+	seq_num += 1;
 	
 	int numbytes;
 	unsigned char buffer[PACKET_SIZE];
@@ -69,10 +72,13 @@ Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
 		exit(EXIT_FAILURE);
 	}
 	
-	// update seq_num, ack_num, and the client id here
-	seq_num += 1;
+	// update the ack_num, client id, and cwnd here
 	ack_num = receive_packet.get_seq() + 1;
 	cid = receive_packet.get_cid();
+	if (cwnd < ss_thresh)
+		cwnd += SLOW_START_INC;
+	else
+		cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
 	
 	print_packet_recv(receive_packet.get_seq(), receive_packet.get_ack(),
 	 receive_packet.get_cid(), cwnd, ss_thresh, receive_packet.get_flags());
@@ -151,12 +157,32 @@ int main(int argc, char* argv[]) {
 	int file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	
 	while (file_bytes > 0) {
-		Packet file_packet(seq_num, zero_ack, cid, zero_flag, file_bytes);
-		file_packet.set_packet(read_buffer);
+		// send packets depending on cwnd
+		unsigned int num_acks_to_receive = 0;
+		
+		for (unsigned int i = 0; i < cwnd && file_bytes > 0; i += file_bytes) {
+			Packet file_packet(seq_num, zero_ack, cid, zero_flag, file_bytes);
+			file_packet.set_packet(read_buffer);
 
-		print_packet_send(seq_num, zero_ack,
-		 recv_packet.get_cid(), 512, 10000, zero_flag);
-		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
+			print_packet_send(seq_num, zero_ack, recv_packet.get_cid(),
+			 cwnd, ss_thresh, zero_flag);
+			sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0,
+			 servinfo->ai_addr, servinfo->ai_addrlen);
+			
+			// update seq_num
+			seq_num = (seq_num + file_bytes) % (MAX_SEQ_NUM + 1);
+			
+			// set zero_ack/zero_flag to zero if not equal to 0
+			if (zero_ack != 0)
+				zero_ack = 0;
+			if (zero_flag != 0)
+				zero_flag = 0;
+			
+			// update the number of sent packets
+			num_acks_to_receive += 1;
+			
+			file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
+		}
 		
 		// 10 second timeout
 		struct timeval tv;
@@ -169,20 +195,34 @@ int main(int argc, char* argv[]) {
 		FD_SET(sockfd, &readfds);
 		
 		select(sockfd + 1, &readfds, NULL, NULL, &tv);
-	
+		
 		// if packet is responded to
-		if (FD_ISSET(sockfd, &readfds)) {		
-		// check to make sure the acknowledgement packet from server has the
-		// correct connection id
-			do {
-				recv_bytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
-				if (recv_bytes < 0) {
-					cerr << "ERROR: recvfrom";
-					exit(EXIT_FAILURE);
-				}
+		if (FD_ISSET(sockfd, &readfds)) {
+			// wait for same amount of ACKs as sent packets
+			for (unsigned int j = 0; j < num_acks_to_receive; j++) {
+				// check to make sure the acknowledgement packet from server has the
+				// correct connection id
+				do {
+					recv_bytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0,
+					 servinfo->ai_addr, &servinfo->ai_addrlen);
+					if (recv_bytes < 0) {
+						cerr << "ERROR: recvfrom";
+						exit(EXIT_FAILURE);
+					}
+					
+					// Received packet from server, reset timeout to 10 seconds
+					tv.tv_sec = 10;
+					recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
+				}while(recv_packet.get_cid() != cid);
+				print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
+				 cid, cwnd, ss_thresh, recv_packet.get_flags());
 				
-				recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
-			}while(recv_packet.get_cid() != cid);
+				// update cwnd
+				if (cwnd < ss_thresh)
+					cwnd += SLOW_START_INC;
+				else
+					cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
+			}
 		}
 		else {
 			cerr << "ERROR: 10 second timeout while sending file" << endl;
@@ -191,26 +231,21 @@ int main(int argc, char* argv[]) {
 			exit(EXIT_FAILURE);
 		}
 		
-		print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
-		 cid, 0, 0, recv_packet.get_flags());
-		
-		// update seq_num and set zero_ack/zero_flag to zero if not equal to 0
-		seq_num += file_bytes;
-		if (zero_ack != 0)
-			zero_ack = 0;
-		if (zero_flag != 0)
-			zero_flag = 0;
-		
-		file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
+		//file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	}
 	
+	// TODO: determine if FIN packet need to be sent with previous cwnd window
 	//Send FIN to server when done.
 	Packet fin_packet(seq_num, 0, cid, F_FLAG, 0);
 	fin_packet.set_packet(NULL);
 	
-	print_packet_send(seq_num, 0, cid, 512, 10000, F_FLAG);
+	print_packet_send(seq_num, 0, cid, cwnd, ss_thresh, F_FLAG);
 	sendto(sockfd, fin_packet.get_buffer(), fin_packet.get_size(), 0,
 	 servinfo->ai_addr, servinfo->ai_addrlen);
+	
+	// Update sequence number to note that FIN has already been sent
+	seq_num = (seq_num + 1) % (MAX_SEQ_NUM + 1);
+	ack_num += 1;
 
 	// 10 second timeout
 	struct timeval tv;
@@ -239,7 +274,7 @@ int main(int argc, char* argv[]) {
 		}while(recv_packet.get_cid() != cid ||
 		 !(CHECK_BIT(recv_packet.get_flags(), 2) ||
 		   CHECK_BIT(recv_packet.get_flags(), 0)));
-		}
+	}
 	else {
 		cerr << "ERROR: 10 second timeout while waiting for ack to fin packet"
 		 << endl;
@@ -249,17 +284,19 @@ int main(int argc, char* argv[]) {
 	}
 	
 	print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
-	 recv_packet.get_cid(), 512, 10000, recv_packet.get_flags());
-	 
-	// Update sequence number to note that FIN has already been sent
-	seq_num += 1;
-	ack_num += 1;
+	 recv_packet.get_cid(), cwnd, ss_thresh, recv_packet.get_flags());
+	
+	// Update cwnd
+	if (cwnd < ss_thresh)
+		cwnd += SLOW_START_INC;
+	else
+		cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
 	
 	if (CHECK_BIT(recv_packet.get_flags(), 0)) {
 		Packet final_packet(seq_num, ack_num, cid, A_FLAG, 0);
 		final_packet.set_packet(NULL);
 		
-		print_packet_send(seq_num, ack_num, cid, 512, 10000, A_FLAG);	
+		print_packet_send(seq_num, ack_num, cid, cwnd, ss_thresh, A_FLAG);	
 		sendto(sockfd, final_packet.get_buffer(), final_packet.get_size(), 0,
 		 servinfo->ai_addr, servinfo->ai_addrlen);
 	}
@@ -284,11 +321,20 @@ int main(int argc, char* argv[]) {
 			}
 			
 			recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
+			print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
+			 recv_packet.get_cid(), cwnd, ss_thresh, recv_packet.get_flags());
+			
+			// Update cwnd
+			if (cwnd < ss_thresh)
+				cwnd += SLOW_START_INC;
+			else
+				cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
+			
 			if (CHECK_BIT(recv_packet.get_flags(), 0)) {
 				Packet final_packet(seq_num, ack_num, cid, A_FLAG, 0);
 				final_packet.set_packet(NULL);
 				
-				print_packet_send(seq_num, ack_num, cid, 512, 10000, A_FLAG);	
+				print_packet_send(seq_num, ack_num, cid, cwnd, ss_thresh, A_FLAG);	
 				sendto(sockfd, final_packet.get_buffer(), final_packet.get_size(), 0,
 				 servinfo->ai_addr, servinfo->ai_addrlen);
 			}
