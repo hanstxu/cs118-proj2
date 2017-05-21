@@ -18,6 +18,12 @@ using namespace std;
 #define SERVER_INITIAL_SEQUENCE_NUMBER 4321
 #define BUFFER_SIZE 524
 
+struct connection_vars {
+    uint32_t seq;           //gonna be 4322 for the most part  
+    uint32_t ack;           //this ack is the ack sent by server to client. expect this number as the client's next SYN
+};
+
+
 void *get_in_addr(struct sockaddr *sa)
 {
     if (sa->sa_family == AF_INET) {
@@ -26,16 +32,12 @@ void *get_in_addr(struct sockaddr *sa)
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-/* void write_to_file (int num_connections, string filepath, unsigned char* buf, int numbytes){
-    ofstream o_file;
-    o_file.open(filepath, ios::app | ios::out | ios::binary);
-    o_file.write((char*)buf, numbytes);
-    cout << "filepath: " << filepath << endl << "buf: " << buf << endl;
-    memset(buf, '\0', BUFFER_SIZE);
-    o_file.close();
-} */
 
 void print_packet_recv(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cwnd, uint32_t ss_thresh, uint16_t flags) {
+    bool print_recv = true;
+	if(!print_recv)
+		return;
+    
     cout << "RECV " << seq << " " << ack << " " << cid << " " << cwnd << " " << ss_thresh;
     if(CHECK_BIT(flags, 2))
         cout << " ACK";
@@ -49,6 +51,10 @@ void print_packet_recv(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cwnd, 
 }
 
 void print_packet_send(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cwnd, uint32_t ss_thresh, uint16_t flags) {
+    bool print_recv = true;
+	if(!print_recv)
+		return;
+    
     cout << "SEND " << seq << " " << ack << " " << cid << " " << cwnd << " " << ss_thresh;
     if(CHECK_BIT(flags, 2))
         cout << " ACK";
@@ -62,7 +68,7 @@ void print_packet_send(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cwnd, 
     cout << endl;
 }
 
-void handle_packet(unsigned int* num_connections, string path, int sockfd, int* sequence_number, vector<unsigned int> &connection_seq_number) {
+void handle_packet(unsigned int* num_connections, string path, int sockfd, int* sequence_number, vector<connection_vars> &connection) {
     socklen_t addr_len;
     struct sockaddr_storage their_addr;
     int numbytes;
@@ -71,9 +77,6 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     // unsigned char header[HEADER_SIZE] = {0};
     // unsigned int seq, ack;
     // unsigned short cid, flags;
-
-    bool print = true;
-
 
     //RECEIVE PACKET
     addr_len = sizeof(their_addr);
@@ -84,8 +87,8 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 
     //Extract info from packet and set syn, ack, cid, flags, and payload.
     Packet p_receive(buf, numbytes-HEADER_SIZE);
-    if(print)
-        print_packet_recv(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), 0, 0, p_receive.get_flags());
+
+    print_packet_recv(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), 512, 10000, p_receive.get_flags());
 
 
     // //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE, REPLY WITH SYN-ACK
@@ -94,11 +97,12 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         (*num_connections)++;
 		unsigned int send_ack = p_receive.get_seq() + 1;
         unsigned int initial_seq_num = 4321;
-        connection_seq_number.push_back(initial_seq_num);
-        Packet packet_to_send(connection_seq_number[*num_connections - 1], send_ack, *num_connections, A_FLAG | S_FLAG, 0);
+        //declare struct with connection seq number and ack
+        connection_vars new_connection = { initial_seq_num, send_ack };
+        connection.push_back(new_connection);
+        Packet packet_to_send(initial_seq_num, send_ack, *num_connections, A_FLAG | S_FLAG, 0);
         packet_to_send.set_packet(NULL);
-        if(print)
-            print_packet_send(initial_seq_num, send_ack, *num_connections, 512, 10000, A_FLAG | S_FLAG);
+        print_packet_send(initial_seq_num, send_ack, *num_connections, 512, 10000, A_FLAG | S_FLAG);
 
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
@@ -119,11 +123,12 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 
         unsigned int send_seq = p_receive.get_ack();                                            //syn = recieved ack
         unsigned int send_ack = p_receive.get_seq() + p_receive.get_size() - HEADER_SIZE;       //ack = syn + payload size
-        connection_seq_number[p_receive.get_cid() - 1] = send_seq;                              //payload size = 0 so add 0
-        Packet packet_to_send(connection_seq_number[p_receive.get_cid() - 1], send_ack, p_receive.get_cid(), A_FLAG, 0);
+        int this_cid = p_receive.get_cid() - 1;
+        connection[this_cid].seq = send_seq;
+        connection[this_cid].ack = send_ack;                                    //Server expects this number from client's SYN. 
+        Packet packet_to_send(connection[this_cid].seq, send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet(NULL);
-        if(print)
-            print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG);
+        print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG);
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
     }
     
@@ -138,13 +143,21 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 			file.close();
         }
 
-        unsigned int send_seq = connection_seq_number[p_receive.get_cid() - 1];                                       //seq = recieved ack
+        int this_cid = p_receive.get_cid() - 1;
+        unsigned int send_seq = connection[this_cid].seq;                                       //seq = recieved ack
         unsigned int send_ack = p_receive.get_seq() + p_receive.get_size() - HEADER_SIZE;       //ack = seq + payload size
+
+        // if(connection[this_cid].ack == p_receive.get_seq()) {
+        //     cout << "Good....." << endl;
+        // }
+
+        connection[this_cid].seq = send_seq;
+        connection[this_cid].ack = send_ack;                                    //Server expects this number from client's SYN. 
+
         Packet packet_to_send(send_seq, send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet(NULL);
         // cout << "SEQ Number: " << send_seq << "\tACK Number: " << send_ack << "\tFlags: ACK" << endl;
-        if(print)
-            print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG);
+        print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG);
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
     }
 
@@ -152,13 +165,12 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     bool FIN_FLAG_ONLY = CHECK_BIT(p_receive.get_flags(), 0) && !CHECK_BIT(p_receive.get_flags(), 1) && !CHECK_BIT(p_receive.get_flags(), 2);
     if(FIN_FLAG_ONLY) {
         //Send FIN-ACK after receiving FIN
-        unsigned int send_seq = connection_seq_number[p_receive.get_cid() - 1];                              
+        unsigned int send_seq = connection[p_receive.get_cid() - 1].seq;                              
         unsigned int send_ack = p_receive.get_seq() + 1;     
         Packet ack_packet_to_send(send_seq, send_ack, p_receive.get_cid(), A_FLAG | F_FLAG, 0);
         ack_packet_to_send.set_packet(NULL);
         // cout << "SEQ Number: " << send_seq << "\tACK Number: " << send_ack << "\tFlags: ACK" << endl;
-        if(print)
-            print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG | F_FLAG);
+        print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG | F_FLAG);
         sendto(sockfd, ack_packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
 
         //Expect ACK in return
@@ -168,8 +180,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         }
 
         Packet rec(buf, numbytes - HEADER_SIZE);
-        if(print)
-            print_packet_recv(rec.get_seq(), rec.get_ack(), rec.get_cid(), 0, 0, rec.get_flags());
+        print_packet_recv(rec.get_seq(), rec.get_ack(), rec.get_cid(), 512, 10000, rec.get_flags());
 
 
 
@@ -201,7 +212,7 @@ int main(int argc, char *argv[])
     int rv;
     unsigned int num_connections = 0;
     int sequence_number = 4321;
-    vector<unsigned int> connection_seq_number;
+    vector<connection_vars> connection;
 
     // test_header_with_packets();
 
@@ -260,7 +271,7 @@ int main(int argc, char *argv[])
     cerr << "server: waiting to recvfrom...\n" ;
     //At this point, handle the packet recieved
     while(1) {
-        handle_packet(&num_connections, argv[2], sockfd, &sequence_number, connection_seq_number);
+        handle_packet(&num_connections, argv[2], sockfd, &sequence_number, connection);
     }
     
     close(sockfd);
