@@ -117,10 +117,10 @@ int main(int argc, char* argv[]) {
 	int file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	
 	while (file_bytes > 0) {
-		Packet file_packet(recv_packet.get_ack(), recv_packet.get_seq(), cid, A_FLAG, file_bytes);
+		Packet file_packet(seq_num, recv_packet.get_seq(), cid, A_FLAG, file_bytes);
 		file_packet.set_packet(read_buffer);
 
-		print_packet_send(recv_packet.get_ack(), recv_packet.get_seq(),
+		print_packet_send(seq_num, recv_packet.get_seq(),
 		 recv_packet.get_cid(), 512, 10000, A_FLAG);
 		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 		
@@ -139,14 +139,17 @@ int main(int argc, char* argv[]) {
 		print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
 		 cid, 0, 0, recv_packet.get_flags());
 		
+		// update seq_num
+		seq_num += file_bytes;
+		
 		file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	}
 	
 	//Send FIN to server when done.
-	Packet fin_packet(recv_packet.get_ack(), 0, cid, F_FLAG, 0);
+	Packet fin_packet(seq_num, 0, cid, F_FLAG, 0);
 	fin_packet.set_packet(NULL);
 	
-	print_packet_send(recv_packet.get_ack(), 0, cid, 512, 10000, F_FLAG);
+	print_packet_send(seq_num, 0, cid, 512, 10000, F_FLAG);
 	sendto(sockfd, fin_packet.get_buffer(), fin_packet.get_size(), 0,
 	 servinfo->ai_addr, servinfo->ai_addrlen);
 
@@ -162,16 +165,17 @@ int main(int argc, char* argv[]) {
 		recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
 	}while(recv_packet.get_cid() != cid);
 	
-	unsigned int final_seq = recv_packet.get_seq() + 1;
-	unsigned int final_ack = recv_packet.get_ack();
+	// Update sequence number to note that FIN has already been sent
+	seq_num += 1;
+	unsigned int final_ack = recv_packet.get_seq() + 1;
 
 	print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
 	 recv_packet.get_cid(), 512, 10000, recv_packet.get_flags());
 
-	Packet final_packet(final_ack, final_seq, cid, A_FLAG, 0);	
+	Packet final_packet(seq_num, final_ack, cid, A_FLAG, 0);
 	final_packet.set_packet(NULL);
 	
-	print_packet_send(final_ack, final_seq, cid, 512, 10000, A_FLAG);	
+	print_packet_send(seq_num, final_ack, cid, 512, 10000, A_FLAG);	
 	sendto(sockfd, final_packet.get_buffer(), final_packet.get_size(), 0,
 	 servinfo->ai_addr, servinfo->ai_addrlen);
 	
