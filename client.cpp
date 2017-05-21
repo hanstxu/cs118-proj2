@@ -158,17 +158,38 @@ int main(int argc, char* argv[]) {
 		 recv_packet.get_cid(), 512, 10000, zero_flag);
 		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 		
+		// 10 second timeout
+		struct timeval tv;
+		fd_set readfds;
+		
+		tv.tv_sec = 10;
+		tv.tv_usec = 0;
+		
+		FD_ZERO(&readfds);
+		FD_SET(sockfd, &readfds);
+		
+		select(sockfd + 1, &readfds, NULL, NULL, &tv);
+	
+		// if packet is responded to
+		if (FD_ISSET(sockfd, &readfds)) {		
 		// check to make sure the acknowledgement packet from server has the
 		// correct connection id
-		do {
-			recv_bytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
-			if (recv_bytes < 0) {
-				cerr << "ERROR: recvfrom";
-				exit(EXIT_FAILURE);
-			}
-			
-			recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
-		}while(recv_packet.get_cid() != cid);
+			do {
+				recv_bytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
+				if (recv_bytes < 0) {
+					cerr << "ERROR: recvfrom";
+					exit(EXIT_FAILURE);
+				}
+				
+				recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
+			}while(recv_packet.get_cid() != cid);
+		}
+		else {
+			cerr << "ERROR: 10 second timeout while sending file" << endl;
+			close(sockfd);
+			freeaddrinfo(servinfo);
+			exit(EXIT_FAILURE);
+		}
 		
 		print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
 		 cid, 0, 0, recv_packet.get_flags());
@@ -191,19 +212,41 @@ int main(int argc, char* argv[]) {
 	sendto(sockfd, fin_packet.get_buffer(), fin_packet.get_size(), 0,
 	 servinfo->ai_addr, servinfo->ai_addrlen);
 
-	//Expect an FIN-ACK after sending FIN
-	do {
-		recv_bytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr,
-		 &servinfo->ai_addrlen);
-		if (recv_bytes < 0) {
-			cerr << "ERROR: recvfrom";
-			exit(EXIT_FAILURE);
+	// 10 second timeout
+	struct timeval tv;
+	fd_set readfds;
+	
+	tv.tv_sec = 10;
+	tv.tv_usec = 0;
+	
+	FD_ZERO(&readfds);
+	FD_SET(sockfd, &readfds);
+	
+	select(sockfd + 1, &readfds, NULL, NULL, &tv);
+	
+	// if packet is responded to
+	if (FD_ISSET(sockfd, &readfds)) {		
+		//Expect an FIN-ACK after sending FIN
+		do {
+			recv_bytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr,
+			 &servinfo->ai_addrlen);
+			if (recv_bytes < 0) {
+				cerr << "ERROR: recvfrom";
+				exit(EXIT_FAILURE);
+			}
+			
+			recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
+		}while(recv_packet.get_cid() != cid ||
+		 !(CHECK_BIT(recv_packet.get_flags(), 2) ||
+		   CHECK_BIT(recv_packet.get_flags(), 0)));
 		}
-		
-		recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
-	}while(recv_packet.get_cid() != cid ||
-	 !(CHECK_BIT(recv_packet.get_flags(), 2) ||
-	   CHECK_BIT(recv_packet.get_flags(), 0)));
+	else {
+		cerr << "ERROR: 10 second timeout while waiting for ack to fin packet"
+		 << endl;
+		close(sockfd);
+		freeaddrinfo(servinfo);
+		exit(EXIT_FAILURE);
+	}
 	
 	print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
 	 recv_packet.get_cid(), 512, 10000, recv_packet.get_flags());
@@ -222,9 +265,6 @@ int main(int argc, char* argv[]) {
 	}
 	
 	// 2 second timeout
-	struct timeval tv;
-	fd_set readfds;
-	
 	tv.tv_sec = 2;
 	tv.tv_usec = 0;
 	
