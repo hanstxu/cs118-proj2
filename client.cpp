@@ -11,44 +11,47 @@
 #include <stdio.h>	// for printf
 
 #include "packet.h"
+#include "output.h"
 using namespace std;
 
 #define CLIENT_START 12345
 
-void print_packet_received(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cwnd, uint32_t ss_thresh, uint16_t flags) {
-	bool print_recv = true;
-	if(!print_recv)
-		return;
-    cout << "RECV " << seq << " " << ack << " " << cid << " " << cwnd << " " << ss_thresh;
-    if(CHECK_BIT(flags, 2))
-        cout << " ACK";
+Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
+ uint16_t& cid, uint32_t cwnd, uint32_t ss_thresh) {
+	Packet one(seq_num, 0, 0, S_FLAG, 0);
+	one.set_packet(NULL);
 
-    if(CHECK_BIT(flags, 1))
-        cout << " SYN";
-    
-    if(CHECK_BIT(flags, 0))
-        cout << " FIN";
-    cout << endl;
+	print_packet_send(seq_num, 0, 0, cwnd, ss_thresh, S_FLAG);
+	sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr,
+	 servinfo->ai_addrlen);
+	
+	int numbytes;
+	unsigned char buffer[PACKET_SIZE];
+	
+	Packet receive_packet;
+	
+	// check that SYN and ACK flags are set
+	while (!CHECK_BIT(receive_packet.get_flags(), 1) ||
+	 !CHECK_BIT(receive_packet.get_flags(), 2)) {
+		numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr,
+		 &servinfo->ai_addrlen);
+		if (numbytes < 0) {
+			cerr << "ERROR: recvfrom";
+			exit(EXIT_FAILURE);
+		}
+		
+		receive_packet = Packet(buffer, numbytes-HEADER_SIZE);
+	}
+	
+	// update seq_num and the client id here
+	seq_num += 1;
+	cid = receive_packet.get_cid();
+	
+	print_packet_recv(receive_packet.get_seq(), receive_packet.get_ack(),
+	 receive_packet.get_cid(), cwnd, ss_thresh, receive_packet.get_flags());
+	
+	return receive_packet;
 }
-
-void print_packet_send(uint32_t seq, uint32_t ack, uint16_t cid, uint32_t cwnd, uint32_t ss_thresh, uint16_t flags) {
-	bool print_recv = true;
-	if(!print_recv)
-		return;
-
-    cout << "SEND " << seq << " " << ack << " " << cid << " " << cwnd << " " << ss_thresh;
-    if(CHECK_BIT(flags, 2))
-        cout << " ACK";
-
-    if(CHECK_BIT(flags, 1))
-        cout << " SYN";
-    
-    if(CHECK_BIT(flags, 0))
-        cout << " FIN";
-    //cout << " DUP"
-    cout << endl;
-}
-
 
 int main(int argc, char* argv[]) {
 	if (argc != 4) {
@@ -95,25 +98,12 @@ int main(int argc, char* argv[]) {
 	}
 
 	// Start of Handshake
-	Packet one(CLIENT_START, 0, 0, S_FLAG, 0);
-	one.set_packet(NULL);
-
-	print_packet_send(CLIENT_START, 0, 0, 512, 10000, S_FLAG);
-	sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr, servinfo->ai_addrlen);
+	uint16_t cid = 0;
+	uint32_t cwnd = 512;
+	uint32_t ss_thresh = 10000;
+	uint32_t seq_num = CLIENT_START;
 	
-	int numbytes;
-	unsigned char buffer[PACKET_SIZE];
-	
-	numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
-	if (numbytes < 0) {
-		cerr << "ERROR: recvfrom";
-		exit(EXIT_FAILURE);
-	}
-	
-	Packet receive_packet(buffer, numbytes-HEADER_SIZE);
-
-    print_packet_received(receive_packet.get_seq(), receive_packet.get_ack(),
-		receive_packet.get_cid(), 512, 10000, receive_packet.get_flags());
+	Packet recv_packet = handshake(sockfd, servinfo, seq_num, cid, cwnd, ss_thresh);
 	
 	FILE* filp = fopen(argv[3], "rb");
 	if (!filp) {
@@ -121,11 +111,11 @@ int main(int argc, char* argv[]) {
 		exit(EXIT_FAILURE);
 	}
 	
-	unsigned char* read_buffer = new unsigned char[PAYLOAD_SIZE];
+	int recv_bytes;
+	unsigned char buffer[PACKET_SIZE];
+	unsigned char read_buffer[PAYLOAD_SIZE];
+	int file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	
-	int num_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
-	
-
 	while (file_bytes > 0) {
 		Packet file_packet(seq_num, recv_packet.get_seq(), cid, A_FLAG, file_bytes);
 		file_packet.set_packet(read_buffer);
@@ -134,17 +124,21 @@ int main(int argc, char* argv[]) {
 		 recv_packet.get_cid(), 512, 10000, A_FLAG);
 		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 		
-		numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
-		if (numbytes < 0) {
-			cerr << "ERROR: recvfrom";
-			exit(EXIT_FAILURE);
-		}
+		// check to make sure the acknowledgement packet from server has the
+		// correct connection id
+		do {
+			recv_bytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
+			if (recv_bytes < 0) {
+				cerr << "ERROR: recvfrom";
+				exit(EXIT_FAILURE);
+			}
+			
+			recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
+		}while(recv_packet.get_cid() != cid);
 		
-		Packet recv(buffer, numbytes-HEADER_SIZE);
-	    print_packet_received(recv.get_seq(), recv.get_ack(), recv.get_cid(), 0, 0, recv.get_flags());
-		receive_packet = recv;
+		print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
+		 cid, 0, 0, recv_packet.get_flags());
 		
-
 		// update seq_num
 		seq_num += file_bytes;
 		
@@ -160,18 +154,23 @@ int main(int argc, char* argv[]) {
 	 servinfo->ai_addr, servinfo->ai_addrlen);
 
 	//Expect an FIN-ACK after sending FIN
-	numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
-	if (numbytes < 0) {
-		cerr << "ERROR: recvfrom";
-		exit(EXIT_FAILURE);
-	}
+	do {
+		recv_bytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr,
+		 &servinfo->ai_addrlen);
+		if (recv_bytes < 0) {
+			cerr << "ERROR: recvfrom";
+			exit(EXIT_FAILURE);
+		}
+		
+		recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
+	}while(recv_packet.get_cid() != cid);
 	
-
 	// Update sequence number to note that FIN has already been sent
 	seq_num += 1;
 	unsigned int final_ack = recv_packet.get_seq() + 1;
 
-	print_packet_received(receive_ack.get_seq(), receive_ack.get_ack(), receive_ack.get_cid(), 512, 10000, receive_ack.get_flags());
+	print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
+	 recv_packet.get_cid(), 512, 10000, recv_packet.get_flags());
 
 	Packet final_packet(seq_num, final_ack, cid, A_FLAG, 0);
 	final_packet.set_packet(NULL);
@@ -180,7 +179,6 @@ int main(int argc, char* argv[]) {
 	sendto(sockfd, final_packet.get_buffer(), final_packet.get_size(), 0,
 	 servinfo->ai_addr, servinfo->ai_addrlen);
 	
-	delete read_buffer;
 	close(sockfd);
 	freeaddrinfo(servinfo);
 	return 0;
