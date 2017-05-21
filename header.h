@@ -7,6 +7,7 @@
 #define F_FLAG 0x1
 #define MAX_SEQ_NUM 102400
 #define MAX_CWND 51200
+#define SLOW_START_INC 512
 
 #include <cstring>
 #include <arpa/inet.h>
