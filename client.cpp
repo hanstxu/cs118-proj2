@@ -30,6 +30,9 @@ Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
 	sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr,
 	 servinfo->ai_addrlen);
 	
+	// update seq_num
+	seq_num += 1;
+	
 	int numbytes;
 	unsigned char buffer[PACKET_SIZE];
 	
@@ -69,11 +72,13 @@ Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
 		exit(EXIT_FAILURE);
 	}
 	
-	// update seq_num, ack_num, , and the client id here
-	seq_num += 1;
+	// update the ack_num, client id, and cwnd here
 	ack_num = receive_packet.get_seq() + 1;
 	cid = receive_packet.get_cid();
-	cwnd += SLOW_START_INC;
+	if (cwnd < ss_thresh)
+		cwnd += SLOW_START_INC;
+	else
+		cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
 	
 	print_packet_recv(receive_packet.get_seq(), receive_packet.get_ack(),
 	 receive_packet.get_cid(), cwnd, ss_thresh, receive_packet.get_flags());
@@ -213,7 +218,10 @@ int main(int argc, char* argv[]) {
 				 cid, cwnd, ss_thresh, recv_packet.get_flags());
 				
 				// update cwnd
-				cwnd += SLOW_START_INC;
+				if (cwnd < ss_thresh)
+					cwnd += SLOW_START_INC;
+				else
+					cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
 			}
 		}
 		else {
@@ -279,7 +287,10 @@ int main(int argc, char* argv[]) {
 	 recv_packet.get_cid(), cwnd, ss_thresh, recv_packet.get_flags());
 	
 	// Update cwnd
-	cwnd += SLOW_START_INC;
+	if (cwnd < ss_thresh)
+		cwnd += SLOW_START_INC;
+	else
+		cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
 	
 	if (CHECK_BIT(recv_packet.get_flags(), 0)) {
 		Packet final_packet(seq_num, ack_num, cid, A_FLAG, 0);
@@ -314,7 +325,10 @@ int main(int argc, char* argv[]) {
 			 recv_packet.get_cid(), cwnd, ss_thresh, recv_packet.get_flags());
 			
 			// Update cwnd
-			cwnd += SLOW_START_INC;
+			if (cwnd < ss_thresh)
+				cwnd += SLOW_START_INC;
+			else
+				cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
 			
 			if (CHECK_BIT(recv_packet.get_flags(), 0)) {
 				Packet final_packet(seq_num, ack_num, cid, A_FLAG, 0);
