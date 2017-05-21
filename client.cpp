@@ -115,8 +115,9 @@ int main(int argc, char* argv[]) {
 	}
 	
 	// Have zero_ack = ack_num for the last part of the handshake
-	// Change it to zero after
+	// Change it to zero after (same for zero_flag)
 	uint16_t zero_ack = ack_num;
+	uint16_t zero_flag = 0x0007 & A_FLAG;
 	
 	int recv_bytes;
 	unsigned char buffer[PACKET_SIZE];
@@ -124,11 +125,11 @@ int main(int argc, char* argv[]) {
 	int file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	
 	while (file_bytes > 0) {
-		Packet file_packet(seq_num, zero_ack, cid, A_FLAG, file_bytes);
+		Packet file_packet(seq_num, zero_ack, cid, zero_flag, file_bytes);
 		file_packet.set_packet(read_buffer);
 
 		print_packet_send(seq_num, zero_ack,
-		 recv_packet.get_cid(), 512, 10000, A_FLAG);
+		 recv_packet.get_cid(), 512, 10000, zero_flag);
 		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 		
 		// check to make sure the acknowledgement packet from server has the
@@ -146,10 +147,12 @@ int main(int argc, char* argv[]) {
 		print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
 		 cid, 0, 0, recv_packet.get_flags());
 		
-		// update seq_num and set zero_ack to zero if not equal to 0
+		// update seq_num and set zero_ack/zero_flag to zero if not equal to 0
 		seq_num += file_bytes;
 		if (zero_ack != 0)
 			zero_ack = 0;
+		if (zero_flag != 0)
+			zero_flag = 0;
 		
 		file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	}
@@ -172,8 +175,15 @@ int main(int argc, char* argv[]) {
 		}
 		
 		recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
-	}while(recv_packet.get_cid() != cid);
+	}while(recv_packet.get_cid() != cid ||
+	 !(CHECK_BIT(recv_packet.get_flags(), 2) ||
+	   CHECK_BIT(recv_packet.get_flags(), 0)));
 
+	// TODO: set a 2 second timeout and print drops
+	if (!CHECK_BIT(recv_packet.get_flags(), 0)) {
+		 cerr << "Hello World!" << endl;
+	}
+	
 	print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
 	 recv_packet.get_cid(), 512, 10000, recv_packet.get_flags());
 	 
