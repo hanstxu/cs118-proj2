@@ -88,8 +88,8 @@ int main(int argc, char* argv[]) {
 	}
 	
 	Packet receive_packet(buffer, numbytes-HEADER_SIZE);
-
-    print_packet_received(receive_packet.get_seq(), receive_packet.get_ack(),
+	
+	print_packet_received(receive_packet.get_seq(), receive_packet.get_ack(),
 		receive_packet.get_cid(), 512, 10000, receive_packet.get_flags());
 	
 	FILE* filp = fopen(argv[3], "rb");
@@ -114,9 +114,9 @@ int main(int argc, char* argv[]) {
 			exit(EXIT_FAILURE);
 		}
 		
-		Packet recv(buffer, numbytes-HEADER_SIZE);
-	    print_packet_received(recv.get_seq(), recv.get_ack(), recv.get_cid(), 0, 0, recv.get_flags());
-		receive_packet = recv;
+		Packet file_ack(buffer, numbytes-HEADER_SIZE);
+		print_packet_received(file_ack.get_seq(), file_ack.get_ack(), file_ack.get_cid(), 0, 0, file_ack.get_flags());
+		receive_packet = file_ack;
 		
 		num_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	}
