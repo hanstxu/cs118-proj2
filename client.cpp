@@ -30,12 +30,8 @@ Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
 	sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr,
 	 servinfo->ai_addrlen);
 	
-	// update seq_num
-	seq_num += 1;
-	
 	int numbytes;
 	unsigned char buffer[PACKET_SIZE];
-	
 	Packet receive_packet;
 	
 	// 0.5 second timeout
@@ -76,11 +72,15 @@ Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
 				freeaddrinfo(servinfo);
 				exit(EXIT_FAILURE);
 			}
+			print_packet_send(seq_num, 0, 0, cwnd, ss_thresh, S_FLAG);
+			sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr,
+			 servinfo->ai_addrlen);
 			continue;
 		}
 	}
 	
-	// update the ack_num, client id, and cwnd here
+	// update seq_num, ack_num, client id, and cwnd here
+	seq_num += 1;
 	ack_num = receive_packet.get_seq() + 1;
 	cid = receive_packet.get_cid();
 	if (cwnd < ss_thresh)
