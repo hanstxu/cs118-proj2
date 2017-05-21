@@ -125,20 +125,13 @@ int main(int argc, char* argv[]) {
 	
 	int num_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	
-	bool handshake_send = true;
-	while (num_bytes > 0) {
 
-		unsigned int send_ack = 0;
-		unsigned int send_flag = 0;
-		if(handshake_send) {
-			send_ack = receive_packet.get_seq() + 1;
-			send_flag = A_FLAG;
-		}
-
-		Packet file_packet(receive_packet.get_ack(), send_ack, receive_packet.get_cid(), send_flag, num_bytes);
+	while (file_bytes > 0) {
+		Packet file_packet(seq_num, recv_packet.get_seq(), cid, A_FLAG, file_bytes);
 		file_packet.set_packet(read_buffer);
 
-		print_packet_send(receive_packet.get_ack(), send_ack, receive_packet.get_cid(), 512, 10000, A_FLAG);
+		print_packet_send(seq_num, recv_packet.get_seq(),
+		 recv_packet.get_cid(), 512, 10000, A_FLAG);
 		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 		
 		numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
@@ -151,16 +144,20 @@ int main(int argc, char* argv[]) {
 	    print_packet_received(recv.get_seq(), recv.get_ack(), recv.get_cid(), 0, 0, recv.get_flags());
 		receive_packet = recv;
 		
-		num_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
-		handshake_send = false;
+
+		// update seq_num
+		seq_num += file_bytes;
+		
+		file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	}
 	
 	//Send FIN to server when done.
-	Packet send_fin_packet(receive_packet.get_ack(), 0, receive_packet.get_cid(), F_FLAG, 0);
-	send_fin_packet.set_packet(NULL);
+	Packet fin_packet(seq_num, 0, cid, F_FLAG, 0);
+	fin_packet.set_packet(NULL);
 	
-	print_packet_send(receive_packet.get_ack(), 0, receive_packet.get_cid(), 512, 10000, F_FLAG);
-	sendto(sockfd, send_fin_packet.get_buffer(), send_fin_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
+	print_packet_send(seq_num, 0, cid, 512, 10000, F_FLAG);
+	sendto(sockfd, fin_packet.get_buffer(), fin_packet.get_size(), 0,
+	 servinfo->ai_addr, servinfo->ai_addrlen);
 
 	//Expect an FIN-ACK after sending FIN
 	numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr, &servinfo->ai_addrlen);
@@ -169,17 +166,19 @@ int main(int argc, char* argv[]) {
 		exit(EXIT_FAILURE);
 	}
 	
-	Packet receive_ack(buffer, numbytes);
-	unsigned int final_seq = receive_ack.get_seq() + 1;
-	unsigned int final_ack = receive_ack.get_ack();
+
+	// Update sequence number to note that FIN has already been sent
+	seq_num += 1;
+	unsigned int final_ack = recv_packet.get_seq() + 1;
 
 	print_packet_received(receive_ack.get_seq(), receive_ack.get_ack(), receive_ack.get_cid(), 512, 10000, receive_ack.get_flags());
 
-	Packet final_packet(final_ack, final_seq, receive_packet.get_cid(), A_FLAG, 0);	
+	Packet final_packet(seq_num, final_ack, cid, A_FLAG, 0);
 	final_packet.set_packet(NULL);
 	
-	print_packet_send(final_ack, final_seq, receive_packet.get_cid(), 512, 10000, A_FLAG);	
-	sendto(sockfd, final_packet.get_buffer(), final_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
+	print_packet_send(seq_num, final_ack, cid, 512, 10000, A_FLAG);	
+	sendto(sockfd, final_packet.get_buffer(), final_packet.get_size(), 0,
+	 servinfo->ai_addr, servinfo->ai_addrlen);
 	
 	delete read_buffer;
 	close(sockfd);
