@@ -10,11 +10,16 @@
 #include <unistd.h>		// POSIX operating system API
 #include <stdio.h>	// for printf
 
+#include <sys/select.h>	// using select for timeout
+#include <sys/time.h>	// for the timeval structure
+
 #include "packet.h"
 #include "output.h"
 using namespace std;
 
 #define CLIENT_START 12345
+
+// TODO: print drops
 
 Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
  uint32_t& ack_num, uint16_t& cid, uint32_t cwnd, uint32_t ss_thresh) {
@@ -178,11 +183,6 @@ int main(int argc, char* argv[]) {
 	}while(recv_packet.get_cid() != cid ||
 	 !(CHECK_BIT(recv_packet.get_flags(), 2) ||
 	   CHECK_BIT(recv_packet.get_flags(), 0)));
-
-	// TODO: set a 2 second timeout and print drops
-	if (!CHECK_BIT(recv_packet.get_flags(), 0)) {
-		 cerr << "Hello World!" << endl;
-	}
 	
 	print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
 	 recv_packet.get_cid(), 512, 10000, recv_packet.get_flags());
@@ -190,13 +190,48 @@ int main(int argc, char* argv[]) {
 	// Update sequence number to note that FIN has already been sent
 	seq_num += 1;
 	ack_num += 1;
-
-	Packet final_packet(seq_num, ack_num, cid, A_FLAG, 0);
-	final_packet.set_packet(NULL);
 	
-	print_packet_send(seq_num, ack_num, cid, 512, 10000, A_FLAG);	
-	sendto(sockfd, final_packet.get_buffer(), final_packet.get_size(), 0,
-	 servinfo->ai_addr, servinfo->ai_addrlen);
+	if (CHECK_BIT(recv_packet.get_flags(), 0)) {
+		Packet final_packet(seq_num, ack_num, cid, A_FLAG, 0);
+		final_packet.set_packet(NULL);
+		
+		print_packet_send(seq_num, ack_num, cid, 512, 10000, A_FLAG);	
+		sendto(sockfd, final_packet.get_buffer(), final_packet.get_size(), 0,
+		 servinfo->ai_addr, servinfo->ai_addrlen);
+	}
+	
+	// 2 second timeout
+	struct timeval tv;
+	fd_set readfds;
+	
+	tv.tv_sec = 2;
+	tv.tv_usec = 0;
+	
+	FD_ZERO(&readfds);
+	FD_SET(sockfd, &readfds);
+	
+	select(sockfd + 1, &readfds, NULL, NULL, &tv);
+	
+	if (FD_ISSET(sockfd, &readfds)) {
+		do {
+			recv_bytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0,
+			 servinfo->ai_addr, &servinfo->ai_addrlen);
+			if (recv_bytes < 0) {
+				cerr << "ERROR: recvfrom";
+				exit(EXIT_FAILURE);
+			}
+			
+			recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
+			if (CHECK_BIT(recv_packet.get_flags(), 0)) {
+				Packet final_packet(seq_num, ack_num, cid, A_FLAG, 0);
+				final_packet.set_packet(NULL);
+				
+				print_packet_send(seq_num, ack_num, cid, 512, 10000, A_FLAG);	
+				sendto(sockfd, final_packet.get_buffer(), final_packet.get_size(), 0,
+				 servinfo->ai_addr, servinfo->ai_addrlen);
+			}
+		}while(tv.tv_sec > 0 && tv.tv_usec > 0);
+	}
 	
 	close(sockfd);
 	freeaddrinfo(servinfo);
