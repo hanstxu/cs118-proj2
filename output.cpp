@@ -34,7 +34,9 @@ void print_packet_send(uint32_t seq, uint32_t ack, uint16_t cid,
     
     if(CHECK_BIT(flags, 0))
         cout << " FIN";
-    //cout << " DUP"
+    
+    if(CHECK_BIT(flags, 3))
+        cout << " DUP";
     cout << endl;
 }
 
@@ -44,7 +46,7 @@ void print_packet_drop(uint32_t seq, uint32_t ack, uint16_t cid,
 	if(!print_recv)
 		return;
 
-    cout << "SEND " << seq << " " << ack << " " << cid;
+    cout << "DROP " << seq << " " << ack << " " << cid;
     if(CHECK_BIT(flags, 2))
         cout << " ACK";
 

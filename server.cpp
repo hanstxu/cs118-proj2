@@ -23,6 +23,7 @@ struct connection_vars {
     uint32_t seq;           //gonna be 4322 for the most part  
     uint32_t ack;           //this ack is the ack sent by server to client. expect this number as the client's next SYN
     bool isValid;
+    uint32_t max_ack;
 };
 
 
@@ -60,7 +61,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 		unsigned int send_ack = p_receive.get_seq() + 1;
         unsigned int initial_seq_num = 4321;
         //declare struct with connection seq number and ack
-        connection_vars new_connection = { initial_seq_num, send_ack, true };
+        connection_vars new_connection = { initial_seq_num, send_ack, true, send_ack };
         connection.push_back(new_connection);
         Packet packet_to_send(initial_seq_num, send_ack, *num_connections, A_FLAG | S_FLAG, 0);
         packet_to_send.set_packet(NULL);
@@ -81,6 +82,9 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         print_packet_drop(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), p_receive.get_flags()); 
         return;
     }
+
+
+    // cout << "Max ack: " << connection[p_receive.get_cid() - 1].max_ack << ", Send ack: " << p_receive.get_seq() + p_receive.get_size() - HEADER_SIZE << ", FLAGS: " << p_receive.get_flags() << endl;
 
     //CASE: ACK FLAG ONLY, RECEIVE FILE AND REPLY WITH ACK. This is technically part 2 of handshake
     bool ACK_FLAG_ONLY = CHECK_BIT(p_receive.get_flags(), 2) && (!CHECK_BIT(p_receive.get_flags(), 1)) && (!CHECK_BIT(p_receive.get_flags(), 0));
@@ -104,6 +108,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         connection[this_cid].ack = send_ack;                                    //Server expects this number from client's SYN. 
         Packet packet_to_send(connection[this_cid].seq, send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet(NULL);
+
         print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG);
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
@@ -121,14 +126,28 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 			file.close();
         }
 
+
         int this_cid = p_receive.get_cid() - 1;
         unsigned int send_seq = connection[this_cid].seq;                                       //seq = recieved ack
         unsigned int send_ack = p_receive.get_seq() + p_receive.get_size() - HEADER_SIZE;       //ack = seq + payload size
-
-        //Must be the correct sequence number. If not, drop.
-        if(connection[this_cid].ack != p_receive.get_seq()) {
+        send_ack = send_ack % (102400 + 1);
+        //Receive a packet out of order (packet is too far ahead)
+        if(connection[this_cid].ack < p_receive.get_seq()) {
             print_packet_drop(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), p_receive.get_flags());
             return;
+        }
+
+
+        unsigned int print_flag = A_FLAG;
+        //send ack is less than max ack that has been sent... Packet is from the past...
+        if(send_ack < connection[this_cid].max_ack) {
+            //print dup
+            print_flag |= 0x8;
+        }
+        //send ack is not a dup
+        else {
+            //update maxack
+            connection[this_cid].max_ack = send_ack;
         }
 
         connection[this_cid].seq = send_seq;
@@ -136,12 +155,17 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 
         Packet packet_to_send(send_seq, send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet(NULL);
+
+        
+
+
         // cout << "SEQ Number: " << send_seq << "\tACK Number: " << send_ack << "\tFlags: ACK" << endl;
 
-        print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG);
+        print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, print_flag);
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
     }
+
 
     //CASE: FIN FLAG ONLY, START TERMINATE
     bool FIN_FLAG_ONLY = CHECK_BIT(p_receive.get_flags(), 0) && !CHECK_BIT(p_receive.get_flags(), 1) && !CHECK_BIT(p_receive.get_flags(), 2);
