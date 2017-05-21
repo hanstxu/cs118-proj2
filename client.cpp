@@ -38,38 +38,46 @@ Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
 	
 	Packet receive_packet;
 	
-	// 10 second timeout
+	// 0.5 second timeout
 	struct timeval tv;
 	fd_set readfds;
+	bool successful_ack = false;
+	unsigned int num_timeouts = 0;
 	
-	tv.tv_sec = 10;
-	tv.tv_usec = 0;
-	
-	FD_ZERO(&readfds);
-	FD_SET(sockfd, &readfds);
-	
-	select(sockfd + 1, &readfds, NULL, NULL, &tv);
-	
-	// if packet is responded to
-	if (FD_ISSET(sockfd, &readfds)) {
-		// check that SYN and ACK flags are set
-		while (!CHECK_BIT(receive_packet.get_flags(), 1) ||
-		 !CHECK_BIT(receive_packet.get_flags(), 2)) {
-			numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr,
-			 &servinfo->ai_addrlen);
-			if (numbytes < 0) {
-				cerr << "ERROR: recvfrom" << endl;
+	while (!successful_ack) {
+		tv.tv_sec = 0;
+		tv.tv_usec = 500000;
+		
+		FD_ZERO(&readfds);
+		FD_SET(sockfd, &readfds);
+		
+		select(sockfd + 1, &readfds, NULL, NULL, &tv);
+		
+		// if packet is responded to
+		if (FD_ISSET(sockfd, &readfds)) {
+			// check that SYN and ACK flags are set
+			while (!CHECK_BIT(receive_packet.get_flags(), 1) ||
+			 !CHECK_BIT(receive_packet.get_flags(), 2)) {
+				numbytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0, servinfo->ai_addr,
+				 &servinfo->ai_addrlen);
+				if (numbytes < 0) {
+					cerr << "ERROR: recvfrom" << endl;
+					exit(EXIT_FAILURE);
+				}
+				
+				receive_packet = Packet(buffer, numbytes-HEADER_SIZE);
+			}
+			successful_ack = true;
+		}
+		else {
+			if (++num_timeouts >= 20) {
+				cerr << "ERROR: 10 second timeout on handshake" << endl;
+				close(sockfd);
+				freeaddrinfo(servinfo);
 				exit(EXIT_FAILURE);
 			}
-			
-			receive_packet = Packet(buffer, numbytes-HEADER_SIZE);
+			continue;
 		}
-	}
-	else {
-		cerr << "ERROR: 10 second timeout on handshake" << endl;
-		close(sockfd);
-		freeaddrinfo(servinfo);
-		exit(EXIT_FAILURE);
 	}
 	
 	// update the ack_num, client id, and cwnd here
