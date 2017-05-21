@@ -17,7 +17,7 @@ using namespace std;
 #define CLIENT_START 12345
 
 Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
- uint16_t& cid, uint32_t cwnd, uint32_t ss_thresh) {
+ uint32_t& ack_num, uint16_t& cid, uint32_t cwnd, uint32_t ss_thresh) {
 	Packet one(seq_num, 0, 0, S_FLAG, 0);
 	one.set_packet(NULL);
 
@@ -43,8 +43,9 @@ Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
 		receive_packet = Packet(buffer, numbytes-HEADER_SIZE);
 	}
 	
-	// update seq_num and the client id here
+	// update seq_num, ack_num, and the client id here
 	seq_num += 1;
+	ack_num = receive_packet.get_seq() + 1;
 	cid = receive_packet.get_cid();
 	
 	print_packet_recv(receive_packet.get_seq(), receive_packet.get_ack(),
@@ -98,12 +99,14 @@ int main(int argc, char* argv[]) {
 	}
 
 	// Start of Handshake
+	uint32_t seq_num = CLIENT_START;
+	uint32_t ack_num = 0;
 	uint16_t cid = 0;
 	uint32_t cwnd = 512;
 	uint32_t ss_thresh = 10000;
-	uint32_t seq_num = CLIENT_START;
 	
-	Packet recv_packet = handshake(sockfd, servinfo, seq_num, cid, cwnd, ss_thresh);
+	Packet recv_packet = handshake(sockfd, servinfo, seq_num, ack_num, cid,
+	 cwnd, ss_thresh);
 	
 	FILE* filp = fopen(argv[3], "rb");
 	if (!filp) {
@@ -111,16 +114,20 @@ int main(int argc, char* argv[]) {
 		exit(EXIT_FAILURE);
 	}
 	
+	// Have zero_ack = ack_num for the last part of the handshake
+	// Change it to zero after
+	uint16_t zero_ack = ack_num;
+	
 	int recv_bytes;
 	unsigned char buffer[PACKET_SIZE];
 	unsigned char read_buffer[PAYLOAD_SIZE];
 	int file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	
 	while (file_bytes > 0) {
-		Packet file_packet(seq_num, recv_packet.get_seq(), cid, A_FLAG, file_bytes);
+		Packet file_packet(seq_num, zero_ack, cid, A_FLAG, file_bytes);
 		file_packet.set_packet(read_buffer);
 
-		print_packet_send(seq_num, recv_packet.get_seq(),
+		print_packet_send(seq_num, zero_ack,
 		 recv_packet.get_cid(), 512, 10000, A_FLAG);
 		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0, servinfo->ai_addr, servinfo->ai_addrlen);
 		
@@ -139,8 +146,10 @@ int main(int argc, char* argv[]) {
 		print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
 		 cid, 0, 0, recv_packet.get_flags());
 		
-		// update seq_num
+		// update seq_num and set zero_ack to zero if not equal to 0
 		seq_num += file_bytes;
+		if (zero_ack != 0)
+			zero_ack = 0;
 		
 		file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	}
@@ -164,18 +173,18 @@ int main(int argc, char* argv[]) {
 		
 		recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
 	}while(recv_packet.get_cid() != cid);
-	
-	// Update sequence number to note that FIN has already been sent
-	seq_num += 1;
-	unsigned int final_ack = recv_packet.get_seq() + 1;
 
 	print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
 	 recv_packet.get_cid(), 512, 10000, recv_packet.get_flags());
+	 
+	// Update sequence number to note that FIN has already been sent
+	seq_num += 1;
+	ack_num += 1;
 
-	Packet final_packet(seq_num, final_ack, cid, A_FLAG, 0);
+	Packet final_packet(seq_num, ack_num, cid, A_FLAG, 0);
 	final_packet.set_packet(NULL);
 	
-	print_packet_send(seq_num, final_ack, cid, 512, 10000, A_FLAG);	
+	print_packet_send(seq_num, ack_num, cid, 512, 10000, A_FLAG);	
 	sendto(sockfd, final_packet.get_buffer(), final_packet.get_size(), 0,
 	 servinfo->ai_addr, servinfo->ai_addrlen);
 	
