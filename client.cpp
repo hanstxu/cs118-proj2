@@ -163,7 +163,7 @@ int main(int argc, char* argv[]) {
 	uint16_t zero_ack = ack_num;
 	uint16_t zero_flag = 0x0007 & A_FLAG;
 	
-	int recv_bytes = 0;
+	int recv_bytes;
 	unsigned char buffer[PACKET_SIZE];
 	unsigned char read_buffer[PAYLOAD_SIZE];
 	int unfilled_cwnd = 0;
@@ -247,9 +247,8 @@ send_packets:
 					else
 						cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
 					
-					retrans_ack = recv_packet.get_ack();
-					//if (retrans_ack < recv_packet.get_ack())
-					//	retrans_ack += file_bytes;
+					if (retrans_ack < recv_packet.get_ack())
+						retrans_ack += file_bytes;
 					
 					unfilled_cwnd -= PAYLOAD_SIZE;
 					successful_ack = true;
@@ -266,7 +265,7 @@ send_packets:
 					cwnd = 512;
 					unfilled_cwnd = 0;
 					stop_dup_seq = seq_num;
-					seq_num = (retrans_ack - 512) % (MAX_SEQ_NUM + 1);
+					seq_num = (retrans_ack  - 512) % (MAX_SEQ_NUM + 1);
 					print_dup = true;
 					fseek(filp, retrans_ack - CLIENT_START - 1, SEEK_SET);
 					goto send_packets;
@@ -315,10 +314,7 @@ send_packets:
 				else
 					cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
 				
-				//if (retrans_ack < recv_packet.get_ack())
-				//	retrans_ack += file_bytes;
-				retrans_ack = recv_packet.get_ack();
-				
+				retrans_ack += PAYLOAD_SIZE;
 				unfilled_cwnd -= PAYLOAD_SIZE;
 				successful_ack = true;
 			}
