@@ -249,10 +249,11 @@ int main(int argc, char* argv[]) {
 						freeaddrinfo(servinfo);
 						exit(EXIT_FAILURE);
 					}
-					//print_packet_send(seq_num, 0, 0, cwnd, ss_thresh, S_FLAG | D_FLAG);
-					//sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr,
-					// servinfo->ai_addrlen);
-					continue;
+					ss_thresh = cwnd/2;
+					cwnd = 512;
+					unfilled_cwnd = 0;
+					fseek(filp, retrans_ack - CLIENT_START - 1, SEEK_SET);
+					break;
 				}
 			}
 		}
@@ -260,26 +261,64 @@ int main(int argc, char* argv[]) {
 		file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	}
 	
+send_packets:	
 	// Receive all the final acks
 	while (unfilled_cwnd > 0) {
-		recv_bytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0,
-		 servinfo->ai_addr, &servinfo->ai_addrlen);
-		if (recv_bytes < 0) {
-			cerr << "ERROR: recvfrom";
-			exit(EXIT_FAILURE);
+		struct timeval tv;
+		fd_set readfds;
+		bool successful_ack = false;
+		unsigned int num_timeouts = 0;
+
+		while (!successful_ack) {
+			tv.tv_sec = 0;
+			tv.tv_usec = 500000;
+			
+			FD_ZERO(&readfds);
+			FD_SET(sockfd, &readfds);
+			
+			select(sockfd + 1, &readfds, NULL, NULL, &tv);
+			
+			// if packet is responded to
+			if (FD_ISSET(sockfd, &readfds)) {
+				do {
+					recv_bytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0,
+					 servinfo->ai_addr, &servinfo->ai_addrlen);
+					if (recv_bytes < 0) {
+						cerr << "ERROR: recvfrom";
+						exit(EXIT_FAILURE);
+					}
+					
+					recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
+				}while(recv_packet.get_cid() != cid);
+
+				print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
+				 cid, cwnd, ss_thresh, recv_packet.get_flags());
+				
+				// update cwnd
+				if (cwnd < ss_thresh)
+					cwnd += SLOW_START_INC;
+				else
+					cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
+				
+				retrans_ack += PAYLOAD_SIZE;
+				unfilled_cwnd -= PAYLOAD_SIZE;
+				successful_ack = true;
+			}
+			else {
+				if (++num_timeouts >= 20) {
+					cerr << "ERROR: 10 second timeout on sending file "
+					 << "packets" << endl;
+					close(sockfd);
+					freeaddrinfo(servinfo);
+					exit(EXIT_FAILURE);
+				}
+				ss_thresh = cwnd/2;
+				cwnd = 512;
+				unfilled_cwnd = 0;
+				fseek(filp, retrans_ack - CLIENT_START - 1, SEEK_SET);
+				goto send_packets;
+			}
 		}
-		
-		recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
-		print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
-		 cid, cwnd, ss_thresh, recv_packet.get_flags());
-		
-		// update cwnd
-		if (cwnd < ss_thresh)
-			cwnd += SLOW_START_INC;
-		else
-			cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
-		
-		unfilled_cwnd -= PAYLOAD_SIZE;
 	}
 	
 	// TODO: determine if FIN packet need to be sent with previous cwnd window
