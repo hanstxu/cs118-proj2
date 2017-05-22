@@ -173,7 +173,8 @@ int main(int argc, char* argv[]) {
 	unsigned int retrans_ack = seq_num;
 	
 	int file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
-	uint16_t stop_dup_seq = 0;
+	uint32_t stop_dup_seq = 0;
+	bool print_dup = false;
 	
 send_packets:
 	while (file_bytes > 0) {
@@ -182,17 +183,20 @@ send_packets:
 		Packet file_packet(seq_num, zero_ack, cid, zero_flag, file_bytes);
 		file_packet.set_packet(read_buffer);
 
-		if (seq_num > stop_dup_seq)
-			print_packet_send(seq_num, zero_ack, recv_packet.get_cid(),
-			 cwnd, ss_thresh, zero_flag);
-		else
+		if (print_dup)
 			print_packet_send(seq_num, zero_ack, recv_packet.get_cid(),
 			 cwnd, ss_thresh, 0x0008);
+		else
+			print_packet_send(seq_num, zero_ack, recv_packet.get_cid(),
+			 cwnd, ss_thresh, zero_flag);
+		
 		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0,
 		 servinfo->ai_addr, servinfo->ai_addrlen);
 		
 		// update seq_num
 		seq_num = (seq_num + file_bytes) % (MAX_SEQ_NUM + 1);
+		if (seq_num == stop_dup_seq)
+			print_dup = false;
 		
 		// set zero_ack/zero_flag to zero if not equal to 0
 		if (zero_ack != 0)
@@ -243,7 +247,9 @@ send_packets:
 					else
 						cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
 					
-					retrans_ack += PAYLOAD_SIZE;
+					if (retrans_ack < recv_packet.get_ack())
+						retrans_ack += file_bytes;
+					
 					unfilled_cwnd -= PAYLOAD_SIZE;
 					successful_ack = true;
 				}
@@ -259,7 +265,8 @@ send_packets:
 					cwnd = 512;
 					unfilled_cwnd = 0;
 					stop_dup_seq = seq_num;
-					seq_num = retrans_ack  - 512 % (MAX_SEQ_NUM + 1);
+					seq_num = (retrans_ack  - 512) % (MAX_SEQ_NUM + 1);
+					print_dup = true;
 					fseek(filp, retrans_ack - CLIENT_START - 1, SEEK_SET);
 					goto send_packets;
 				}
@@ -323,7 +330,8 @@ send_packets:
 				cwnd = 512;
 				unfilled_cwnd = 0;
 				stop_dup_seq = seq_num;
-				seq_num = retrans_ack - 512 % (MAX_SEQ_NUM + 1);;
+				seq_num = (retrans_ack - 512) % (MAX_SEQ_NUM + 1);
+				print_dup = true;
 				fseek(filp, retrans_ack - CLIENT_START - 1, SEEK_SET);
 				goto send_packets;
 			}
