@@ -116,6 +116,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         connection[this_cid].seq = send_seq;
         connection[this_cid].ack = send_ack;                                    //Server expects this number from client's SYN. 
         connection[this_cid].max_ack = send_ack;
+        connection[this_cid].max_ack = connection[this_cid].max_ack % (102400 + 1);
         Packet packet_to_send(connection[this_cid].seq, send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet(NULL);
 
@@ -142,6 +143,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         else {
             //update maxack
             connection[this_cid].max_ack = send_ack;
+            connection[this_cid].max_ack = connection[this_cid].max_ack % (102400 + 1);
         }
         //modulo for printing purposes
         send_ack = send_ack % (102400 + 1);
