@@ -174,6 +174,7 @@ int main(int argc, char* argv[]) {
 	
 	int file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	
+send_packets:
 	while (file_bytes > 0) {
 		// send packets depending on cwnd	
 		unfilled_cwnd += file_bytes;
@@ -261,7 +262,6 @@ int main(int argc, char* argv[]) {
 		file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	}
 	
-send_packets:	
 	// Receive all the final acks
 	while (unfilled_cwnd > 0) {
 		struct timeval tv;
