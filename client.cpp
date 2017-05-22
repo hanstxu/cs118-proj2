@@ -191,7 +191,7 @@ int main(int argc, char* argv[]) {
 		// update the number of sent packets
 		num_acks_to_receive += 1;
 		
-		if ((unsigned int)unfilled_cwnd >= cwnd) {
+		while ((unsigned int)unfilled_cwnd >= cwnd) {
 			// 10 second timeout
 			struct timeval tv;
 			fd_set readfds;
@@ -240,8 +240,7 @@ int main(int argc, char* argv[]) {
 			}
 		}
 		
-		file_bytes = fread(read_buffer, sizeof(char),
-		 min((int)cwnd - (int)unfilled_cwnd, PAYLOAD_SIZE), filp);
+		file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	}
 	
 	// Receive all the final acks
