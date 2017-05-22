@@ -14,6 +14,7 @@
 #include <sys/time.h>	// for the timeval structure
 
 #include <algorithm>	// for min function
+#include <vector>		// variable size vectors
 
 #include "packet.h"
 #include "output.h"
@@ -22,6 +23,7 @@ using namespace std;
 #define CLIENT_START 12345
 
 // TODO: print drops
+Packet test;
 
 Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
  uint32_t& ack_num, uint16_t& cid, uint32_t& cwnd, uint32_t ss_thresh) {
@@ -166,6 +168,10 @@ int main(int argc, char* argv[]) {
 	unsigned char read_buffer[PAYLOAD_SIZE];
 	int unfilled_cwnd = 0;
 	unsigned int num_acks_to_receive = 0;
+	
+	// ack_num
+	unsigned int retrans_ack = seq_num;
+	
 	int file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	
 	while (file_bytes > 0) {
@@ -195,48 +201,59 @@ int main(int argc, char* argv[]) {
 			// 10 second timeout
 			struct timeval tv;
 			fd_set readfds;
-			
-			tv.tv_sec = 10;
-			tv.tv_usec = 0;
-			
-			FD_ZERO(&readfds);
-			FD_SET(sockfd, &readfds);
-			
-			select(sockfd + 1, &readfds, NULL, NULL, &tv);
-			
-			// if packet is responded to
-			if (FD_ISSET(sockfd, &readfds)) {
-				// check to make sure the acknowledgement packet from server has the
-				// correct connection id
-				do {
-					recv_bytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0,
-					 servinfo->ai_addr, &servinfo->ai_addrlen);
-					if (recv_bytes < 0) {
-						cerr << "ERROR: recvfrom";
+			bool successful_ack = false;
+			unsigned int num_timeouts = 0;
+	
+			while (!successful_ack) {
+				tv.tv_sec = 0;
+				tv.tv_usec = 500000;
+				
+				FD_ZERO(&readfds);
+				FD_SET(sockfd, &readfds);
+				
+				select(sockfd + 1, &readfds, NULL, NULL, &tv);
+				
+				// if packet is responded to
+				if (FD_ISSET(sockfd, &readfds)) {
+					// check to make sure the acknowledgement packet from server has the
+					// correct connection id
+					do {
+						recv_bytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0,
+						 servinfo->ai_addr, &servinfo->ai_addrlen);
+						if (recv_bytes < 0) {
+							cerr << "ERROR: recvfrom";
+							exit(EXIT_FAILURE);
+						}
+						
+						recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
+					}while(recv_packet.get_cid() != cid);
+
+					print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
+					 cid, cwnd, ss_thresh, recv_packet.get_flags());
+					
+					// update cwnd
+					if (cwnd < ss_thresh)
+						cwnd += SLOW_START_INC;
+					else
+						cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
+					
+					retrans_ack += PAYLOAD_SIZE;
+					unfilled_cwnd -= PAYLOAD_SIZE;
+					successful_ack = true;
+				}
+				else {
+					if (++num_timeouts >= 20) {
+						cerr << "ERROR: 10 second timeout on sending file "
+						 << "packets" << endl;
+						close(sockfd);
+						freeaddrinfo(servinfo);
 						exit(EXIT_FAILURE);
 					}
-					
-					// Received packet from server, reset timeout to 10 seconds
-					tv.tv_sec = 10;
-					recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
-				}while(recv_packet.get_cid() != cid);
-
-				print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
-				 cid, cwnd, ss_thresh, recv_packet.get_flags());
-				
-				// update cwnd
-				if (cwnd < ss_thresh)
-					cwnd += SLOW_START_INC;
-				else
-					cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
-				
-				unfilled_cwnd -= PAYLOAD_SIZE;
-			}
-			else {
-				cerr << "ERROR: 10 second timeout while sending file" << endl;
-				close(sockfd);
-				freeaddrinfo(servinfo);
-				exit(EXIT_FAILURE);
+					//print_packet_send(seq_num, 0, 0, cwnd, ss_thresh, S_FLAG | D_FLAG);
+					//sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr,
+					// servinfo->ai_addrlen);
+					continue;
+				}
 			}
 		}
 		
