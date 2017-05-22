@@ -13,6 +13,8 @@
 #include <sys/select.h>	// using select for timeout
 #include <sys/time.h>	// for the timeval structure
 
+#include <algorithm>	// for min function
+
 #include "packet.h"
 #include "output.h"
 using namespace std;
@@ -72,7 +74,7 @@ Packet handshake(int sockfd, struct addrinfo* servinfo, uint32_t& seq_num,
 				freeaddrinfo(servinfo);
 				exit(EXIT_FAILURE);
 			}
-			print_packet_send(seq_num, 0, 0, cwnd, ss_thresh, S_FLAG);
+			print_packet_send(seq_num, 0, 0, cwnd, ss_thresh, S_FLAG | D_FLAG);
 			sendto(sockfd, one.get_buffer(), HEADER_SIZE, 0, servinfo->ai_addr,
 			 servinfo->ai_addrlen);
 			continue;
@@ -162,52 +164,48 @@ int main(int argc, char* argv[]) {
 	int recv_bytes;
 	unsigned char buffer[PACKET_SIZE];
 	unsigned char read_buffer[PAYLOAD_SIZE];
+	int unfilled_cwnd = 0;
+	unsigned int num_acks_to_receive = 0;
 	int file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
 	
 	while (file_bytes > 0) {
-		// send packets depending on cwnd
-		unsigned int num_acks_to_receive = 0;
-		
-		for (unsigned int i = 0; i < cwnd && file_bytes > 0; i += file_bytes) {
-			Packet file_packet(seq_num, zero_ack, cid, zero_flag, file_bytes);
-			file_packet.set_packet(read_buffer);
+		// send packets depending on cwnd	
+		unfilled_cwnd += file_bytes;
+		Packet file_packet(seq_num, zero_ack, cid, zero_flag, file_bytes);
+		file_packet.set_packet(read_buffer);
 
-			print_packet_send(seq_num, zero_ack, recv_packet.get_cid(),
-			 cwnd, ss_thresh, zero_flag);
-			sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0,
-			 servinfo->ai_addr, servinfo->ai_addrlen);
+		print_packet_send(seq_num, zero_ack, recv_packet.get_cid(),
+		 cwnd, ss_thresh, zero_flag);
+		sendto(sockfd, file_packet.get_buffer(), file_packet.get_size(), 0,
+		 servinfo->ai_addr, servinfo->ai_addrlen);
+		
+		// update seq_num
+		seq_num = (seq_num + file_bytes) % (MAX_SEQ_NUM + 1);
+		
+		// set zero_ack/zero_flag to zero if not equal to 0
+		if (zero_ack != 0)
+			zero_ack = 0;
+		if (zero_flag != 0)
+			zero_flag = 0;
+		
+		// update the number of sent packets
+		num_acks_to_receive += 1;
+		
+		if ((unsigned int)unfilled_cwnd >= cwnd) {
+			// 10 second timeout
+			struct timeval tv;
+			fd_set readfds;
 			
-			// update seq_num
-			seq_num = (seq_num + file_bytes) % (MAX_SEQ_NUM + 1);
+			tv.tv_sec = 10;
+			tv.tv_usec = 0;
 			
-			// set zero_ack/zero_flag to zero if not equal to 0
-			if (zero_ack != 0)
-				zero_ack = 0;
-			if (zero_flag != 0)
-				zero_flag = 0;
+			FD_ZERO(&readfds);
+			FD_SET(sockfd, &readfds);
 			
-			// update the number of sent packets
-			num_acks_to_receive += 1;
+			select(sockfd + 1, &readfds, NULL, NULL, &tv);
 			
-			file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
-		}
-		
-		// 10 second timeout
-		struct timeval tv;
-		fd_set readfds;
-		
-		tv.tv_sec = 10;
-		tv.tv_usec = 0;
-		
-		FD_ZERO(&readfds);
-		FD_SET(sockfd, &readfds);
-		
-		select(sockfd + 1, &readfds, NULL, NULL, &tv);
-		
-		// if packet is responded to
-		if (FD_ISSET(sockfd, &readfds)) {
-			// wait for same amount of ACKs as sent packets
-			for (unsigned int j = 0; j < num_acks_to_receive; j++) {
+			// if packet is responded to
+			if (FD_ISSET(sockfd, &readfds)) {
 				// check to make sure the acknowledgement packet from server has the
 				// correct connection id
 				do {
@@ -222,6 +220,7 @@ int main(int argc, char* argv[]) {
 					tv.tv_sec = 10;
 					recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
 				}while(recv_packet.get_cid() != cid);
+
 				print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
 				 cid, cwnd, ss_thresh, recv_packet.get_flags());
 				
@@ -230,16 +229,41 @@ int main(int argc, char* argv[]) {
 					cwnd += SLOW_START_INC;
 				else
 					cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
+				
+				unfilled_cwnd -= PAYLOAD_SIZE;
+			}
+			else {
+				cerr << "ERROR: 10 second timeout while sending file" << endl;
+				close(sockfd);
+				freeaddrinfo(servinfo);
+				exit(EXIT_FAILURE);
 			}
 		}
-		else {
-			cerr << "ERROR: 10 second timeout while sending file" << endl;
-			close(sockfd);
-			freeaddrinfo(servinfo);
+		
+		file_bytes = fread(read_buffer, sizeof(char),
+		 min((int)cwnd - (int)unfilled_cwnd, PAYLOAD_SIZE), filp);
+	}
+	
+	// Receive all the final acks
+	while (unfilled_cwnd > 0) {
+		recv_bytes = recvfrom(sockfd, buffer, PACKET_SIZE, 0,
+		 servinfo->ai_addr, &servinfo->ai_addrlen);
+		if (recv_bytes < 0) {
+			cerr << "ERROR: recvfrom";
 			exit(EXIT_FAILURE);
 		}
 		
-		//file_bytes = fread(read_buffer, sizeof(char), PAYLOAD_SIZE, filp);
+		recv_packet = Packet(buffer, recv_bytes - HEADER_SIZE);
+		print_packet_recv(recv_packet.get_seq(), recv_packet.get_ack(),
+		 cid, cwnd, ss_thresh, recv_packet.get_flags());
+		
+		// update cwnd
+		if (cwnd < ss_thresh)
+			cwnd += SLOW_START_INC;
+		else
+			cwnd += (SLOW_START_INC * SLOW_START_INC) / cwnd;
+		
+		unfilled_cwnd -= PAYLOAD_SIZE;
 	}
 	
 	// TODO: determine if FIN packet need to be sent with previous cwnd window
@@ -290,7 +314,7 @@ int main(int argc, char* argv[]) {
 				freeaddrinfo(servinfo);
 				exit(EXIT_FAILURE);
 			}
-			print_packet_send(seq_num, 0, cid, cwnd, ss_thresh, F_FLAG);
+			print_packet_send(seq_num, 0, cid, cwnd, ss_thresh, F_FLAG | D_FLAG);
 			sendto(sockfd, fin_packet.get_buffer(), fin_packet.get_size(), 0,
 			 servinfo->ai_addr, servinfo->ai_addrlen);
 			continue;

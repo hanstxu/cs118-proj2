@@ -11,7 +11,7 @@ Packet::Packet() {
 
 Packet::Packet(uint32_t seq, uint32_t ack, uint16_t cid, uint16_t flags,
 	unsigned int payload_size) {
-	m_seq = 0, m_ack = 0, m_cid = 0, m_flags = 0;
+	m_seq = seq, m_ack = ack, m_cid = cid, m_flags = flags;
 	convert_to_buffer(m_header, seq, ack, cid, flags);
 	m_payload_size = payload_size;
 	if (payload_size == 0)
@@ -23,7 +23,7 @@ Packet::Packet(uint32_t seq, uint32_t ack, uint16_t cid, uint16_t flags,
 
 //Receive packet declaration. Take in buffer and set the m_syn, m_ack, m_cid, m_flags accordingly.
 Packet::Packet(unsigned char* buffer, unsigned int payload_size) {
-	memset(m_header, 0, HEADER_SIZE);
+	memcpy(m_header, buffer, HEADER_SIZE);
 	get_header_info(buffer, m_seq, m_ack, m_cid, m_flags);
 	m_payload_size = payload_size;
 	if (payload_size == 0)
@@ -33,6 +33,7 @@ Packet::Packet(unsigned char* buffer, unsigned int payload_size) {
 		memcpy(m_payload, &buffer[12], m_payload_size);
 	}
 	m_packet = new unsigned char[payload_size + HEADER_SIZE];
+	memcpy(m_packet, buffer, payload_size + HEADER_SIZE);
 }
 
 Packet& Packet::operator=(const Packet& other) {
