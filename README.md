@@ -12,14 +12,17 @@ We made additional source files for better code reorganization.
 
 // Self-made library for header formatting, network byte order, conversion
 // between buffer and variables
+
 header.h
 header.cpp
 
 // A Packet class that organizes information about a packet
+
 packet.cpp
 packet.h
 
 //  Self-made library for print statements (i.e. RECV, SEND, DROP) 
+
 output.h
 output.cpp
 
@@ -36,15 +39,15 @@ at the application level on top of a UDP transport layer.
 \#include <sys/socket.h>
 \#include <netdb.h>
 \#include <netinet/in.h>
-\#include <string.h>		// for memset
-\#include <unistd.h>		// POSIX operating system API
+\#include <string.h>
+\#include <unistd.h>
 \#include <stdio.h>
 \#include <stdlib.h>
 \#include <errno.h>
-\#include <sys/select.h>	// using select for timeout
-\#include <sys/time.h>	// for the timeval structure
-\#include <algorithm>	// for min function
-\#include <vector>		// variable size vectors
+\#include <sys/select.h>
+\#include <sys/time.h>
+\#include <algorithm>
+\#include <vector>
 \#include <cstring>
 \#include <arpa/inet.h>
 
