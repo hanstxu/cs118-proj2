@@ -51,13 +51,20 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     //Extract info from packet and set syn, ack, cid, flags, and payload.
     Packet p_receive(buf, numbytes-HEADER_SIZE);
 
-    print_packet_recv(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), 512, 10000, p_receive.get_flags());
-
-
     //CASE: SYN FLAG ONLY, PART 1 OF HANDSHAKE, REPLY WITH SYN-ACK
     bool SYN_FLAG_ONLY = CHECK_BIT(p_receive.get_flags(), 1) && (!CHECK_BIT(p_receive.get_flags(), 2)) && (!CHECK_BIT(p_receive.get_flags(), 0));
     if(SYN_FLAG_ONLY && (p_receive.get_cid() == 0)) {
+        //print here
+        print_packet_recv(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), 512, 10000, p_receive.get_flags());
+
         (*num_connections)++;
+
+        // ofstream file;
+        // string filepath = path + "/" + to_string(*num_connections) + ".file";
+        // file.open(filepath, ios::out | ios::binary | ios::app);
+        // file.write((char*)p_receive.get_payload(), p_receive.get_size() - HEADER_SIZE);
+        // file.close();
+
 		unsigned int send_ack = p_receive.get_seq() + 1;
         unsigned int initial_seq_num = 4321;
         //declare struct with connection seq number and ack
@@ -73,12 +80,14 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 
     //ERROR: Drop because syn flag and connection id is NOT 0.
     if(SYN_FLAG_ONLY && (p_receive.get_cid() == 0)) {
+        cerr << "Syn flag error" << endl;
         print_packet_drop(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), p_receive.get_flags()); 
         return;        
     }
 
     //ERROR: Drop if access invalid connection
     if(!connection[p_receive.get_cid() - 1].isValid) {
+        cerr << "connection error" << endl;
         print_packet_drop(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), p_receive.get_flags()); 
         return;
     }
@@ -90,6 +99,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     bool ACK_FLAG_ONLY = CHECK_BIT(p_receive.get_flags(), 2) && (!CHECK_BIT(p_receive.get_flags(), 1)) && (!CHECK_BIT(p_receive.get_flags(), 0));
     bool NO_FLAGS = !CHECK_BIT(p_receive.get_flags(), 2) && (!CHECK_BIT(p_receive.get_flags(), 1)) && (!CHECK_BIT(p_receive.get_flags(), 0));
     if(ACK_FLAG_ONLY) {
+        print_packet_recv(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), 512, 10000, p_receive.get_flags());    
         //TODO: Check if need this if statement because if payload is 0, still open empty file..?
         if(numbytes > 0) {
 			ofstream file;
@@ -117,16 +127,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     //RECEIVE SOME PAYLOAD HERE (no flags, so after the handshake...)
     else if(NO_FLAGS) {
         //TODO: Check if need this if statement because if payload is 0, still open empty file..?
-        if(numbytes > 0) {
-			ofstream file;
-            string filepath = path + "/" + to_string(p_receive.get_cid()) + ".file";
-            // string filepath = "./" + to_string(p_receive.get_cid()) + ".file";
-			file.open(filepath, ios::out | ios::binary | ios::app);
-			file.write((char*)p_receive.get_payload(), p_receive.get_size() - HEADER_SIZE);
-			file.close();
-        }
-
-
+        
         int this_cid = p_receive.get_cid() - 1;
         unsigned int send_seq = connection[this_cid].seq;                                       //seq = recieved ack
         unsigned int send_ack = p_receive.get_seq() + p_receive.get_size() - HEADER_SIZE;       //ack = seq + payload size
@@ -136,19 +137,41 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         if(send_ack < connection[this_cid].max_ack) {
             //print dup
             print_flag |= 0x8;
-        }
+        } 
         //send ack is not a dup
         else {
             //update maxack
             connection[this_cid].max_ack = send_ack;
         }
-        //module for printing purposes
+        //modulo for printing purposes
         send_ack = send_ack % (102400 + 1);
-
-        //Receive a packet out of order (packet is too far ahead)
-        if(connection[this_cid].ack < p_receive.get_seq()) {
+    
+        //OUT OF ORDER CHECK
+        if(connection[this_cid].ack != p_receive.get_seq()) {
             print_packet_drop(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), p_receive.get_flags());
+            // cout << "*************** SYN: " << connection[this_cid].seq << ", ACK: " << connection[this_cid].ack << endl;  
+            Packet packet_to_send(connection[this_cid].seq, connection[this_cid].ack, p_receive.get_cid(), A_FLAG, 0);
+            packet_to_send.set_packet(NULL);
+            print_packet_send(connection[this_cid].seq, connection[this_cid].ack, p_receive.get_cid(), 512, 10000, A_FLAG);            
+            
+            sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
+
             return;
+        }
+
+
+
+        print_packet_recv(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), 512, 10000, p_receive.get_flags());
+
+
+        //write after check if valid
+        if(numbytes > 0) {
+            // cerr << "Writing with SEQ: " << p_receive.get_seq() << " and ACK: " << p_receive.get_ack() << endl;
+			ofstream file;
+            string filepath = path + "/" + to_string(p_receive.get_cid()) + ".file";
+			file.open(filepath, ios::out | ios::binary | ios::app);
+			file.write((char*)p_receive.get_payload(), p_receive.get_size() - HEADER_SIZE);
+			file.close();
         }
 
         connection[this_cid].seq = send_seq;
@@ -156,12 +179,6 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 
         Packet packet_to_send(send_seq, send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet(NULL);
-
-        
-
-
-        // cout << "SEQ Number: " << send_seq << "\tACK Number: " << send_ack << "\tFlags: ACK" << endl;
-
         print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, print_flag);
         sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
         return;
@@ -190,7 +207,8 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         print_packet_recv(rec.get_seq(), rec.get_ack(), rec.get_cid(), 512, 10000, rec.get_flags());
         
         //at this point, connection should be closed...
-        connection[rec.get_cid() - 1].isValid = false;
+        if(rec.get_flags() == A_FLAG)   
+            connection[rec.get_cid() - 1].isValid = false;
 
         //if ack is lost... try again.
 
