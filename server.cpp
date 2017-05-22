@@ -93,7 +93,6 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
     }
 
 
-    // cout << "Max ack: " << connection[p_receive.get_cid() - 1].max_ack << ", Send ack: " << p_receive.get_seq() + p_receive.get_size() - HEADER_SIZE << ", FLAGS: " << p_receive.get_flags() << endl;
 
     //CASE: ACK FLAG ONLY, RECEIVE FILE AND REPLY WITH ACK. This is technically part 2 of handshake
     bool ACK_FLAG_ONLY = CHECK_BIT(p_receive.get_flags(), 2) && (!CHECK_BIT(p_receive.get_flags(), 1)) && (!CHECK_BIT(p_receive.get_flags(), 0));
@@ -116,6 +115,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         int this_cid = p_receive.get_cid() - 1;
         connection[this_cid].seq = send_seq;
         connection[this_cid].ack = send_ack;                                    //Server expects this number from client's SYN. 
+        connection[this_cid].max_ack = send_ack;
         Packet packet_to_send(connection[this_cid].seq, send_ack, p_receive.get_cid(), A_FLAG, 0);
         packet_to_send.set_packet(NULL);
 
@@ -134,7 +134,8 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 
         unsigned int print_flag = A_FLAG;
         //send ack is less than max ack that has been sent... Packet is from the past...
-        if(send_ack < connection[this_cid].max_ack) {
+        cerr << "send_ack: " << send_ack << " , max_ack: " << connection[this_cid].max_ack << endl;
+        if(send_ack <= connection[this_cid].max_ack) {
             //print dup
             print_flag |= 0x8;
         } 
@@ -149,10 +150,9 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         //OUT OF ORDER CHECK
         if(connection[this_cid].ack != p_receive.get_seq()) {
             print_packet_drop(p_receive.get_seq(), p_receive.get_ack(), p_receive.get_cid(), p_receive.get_flags());
-            // cout << "*************** SYN: " << connection[this_cid].seq << ", ACK: " << connection[this_cid].ack << endl;  
             Packet packet_to_send(connection[this_cid].seq, connection[this_cid].ack, p_receive.get_cid(), A_FLAG, 0);
             packet_to_send.set_packet(NULL);
-            print_packet_send(connection[this_cid].seq, connection[this_cid].ack, p_receive.get_cid(), 512, 10000, A_FLAG);            
+            print_packet_send(connection[this_cid].seq, connection[this_cid].ack, p_receive.get_cid(), 512, 10000, print_flag);            
             
             sendto(sockfd, packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
 
@@ -193,7 +193,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         unsigned int send_ack = p_receive.get_seq() + 1;     
         Packet ack_packet_to_send(send_seq, send_ack, p_receive.get_cid(), A_FLAG | F_FLAG, 0);
         ack_packet_to_send.set_packet(NULL);
-        // cout << "SEQ Number: " << send_seq << "\tACK Number: " << send_ack << "\tFlags: ACK" << endl;
+        // cerr << "SEQ Number: " << send_seq << "\tACK Number: " << send_ack << "\tFlags: ACK" << endl;
         print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG | F_FLAG);
         sendto(sockfd, ack_packet_to_send.get_buffer(), p_receive.get_size() , 0, (struct sockaddr *)&their_addr, addr_len);
 
@@ -207,8 +207,15 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
         print_packet_recv(rec.get_seq(), rec.get_ack(), rec.get_cid(), 512, 10000, rec.get_flags());
         
         //at this point, connection should be closed...
-        if(rec.get_flags() == A_FLAG)   
+        if(rec.get_flags() == A_FLAG) {
             connection[rec.get_cid() - 1].isValid = false;
+            return;
+        }
+        //lost packet, receive fin again
+        else if(rec.get_flags() == F_FLAG) {
+            return;
+            // print_packet_send(send_seq, send_ack, p_receive.get_cid(), 512, 10000, A_FLAG | F_FLAG);
+        }
 
         //if ack is lost... try again.
 
@@ -216,7 +223,7 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 }
 
 void test_header_with_packets() {
-    cout << "Begin test..." << endl;
+    cerr << "Begin test..." << endl;
 
     Packet test(12345, 4321, 10, A_FLAG | S_FLAG, 1);
     char testbuffer[400];
@@ -226,7 +233,7 @@ void test_header_with_packets() {
     Packet test2(test.get_buffer(), 400);
     test2.read_header();
 
-    cout << "End test..." << endl;
+    cerr << "End test..." << endl;
 }
 
 int main(int argc, char *argv[])
