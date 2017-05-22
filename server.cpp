@@ -134,7 +134,6 @@ void handle_packet(unsigned int* num_connections, string path, int sockfd, int* 
 
         unsigned int print_flag = A_FLAG;
         //send ack is less than max ack that has been sent... Packet is from the past...
-        cerr << "send_ack: " << send_ack << " , max_ack: " << connection[this_cid].max_ack << endl;
         if(send_ack <= connection[this_cid].max_ack) {
             //print dup
             print_flag |= 0x8;
